@@ -7,8 +7,9 @@ import {
   View,
   Button, 
   Alert,
+  Pressable,
 } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import {
   getDeliveriesByRoute,
@@ -205,6 +206,16 @@ export default function DriverRouteDetailScreen() {
     <ScrollView
       contentContainerStyle={styles.container}
     >
+
+      <Pressable
+        style={styles.backButton}
+        onPress={() => router.back()}
+      >
+        <Text style={styles.backButtonText}>
+          ← Mis recorridos
+        </Text>
+      </Pressable>
+
       <Text style={styles.title}>
         Detalle del recorrido
       </Text>
@@ -236,13 +247,13 @@ export default function DriverRouteDetailScreen() {
         </Text>
 
         {route.status === 'EN_CURSO' && allDeliveriesCompleted && (
-          <View style={styles.buttonContainer}>
-            <Button
-              title="Finalizar recorrido"
-              onPress={handleCompleteRoute}
-            />
-          </View>
-        )}
+            <View style={styles.buttonContainer}>
+              <Button
+                title="Finalizar recorrido"
+                onPress={handleCompleteRoute}
+              />
+            </View>
+          )}
       </View>
 
       <View style={styles.card}>
@@ -412,5 +423,14 @@ const styles = StyleSheet.create({
 
   buttonContainer: {
     marginTop: 12,
+  },
+
+  backButton: {
+    marginBottom: 16,
+  },
+
+  backButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

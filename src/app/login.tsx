@@ -14,22 +14,25 @@ import { useAuth } from '@/contexts/AuthContext';
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const { signIn } = useAuth();
 
   const handleLogin = async () => {
+    setError('');
+
     if (!email || !password) {
-      console.log('Completar email y contraseña');
+      setError('Completá el email y la contraseña.');
       return;
     }
 
     const { error } = await signIn(email, password);
 
     if (error) {
-      console.log('Error de login:', error.message);
+      setError('El email o la contraseña son incorrectos.');
       return;
     }
 
-    console.log('Login exitoso');
     router.replace('/');
   };
 
@@ -65,15 +68,32 @@ export default function LoginScreen() {
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Contraseña</Text>
 
-            <TextInput
-              style={styles.input}
-              placeholder="Contraseña"
-              placeholderTextColor="#999"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
+            <View style={styles.passwordContainer}>
+              <TextInput
+                style={styles.passwordInput}
+                placeholder="Contraseña"
+                placeholderTextColor="#999"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+              />
+
+              <Pressable
+                style={styles.showPasswordButton}
+                onPress={() => setShowPassword(!showPassword)}
+              >
+                <Text style={styles.showPasswordText}>
+                  {showPassword ? 'Ocultar' : 'Ver'}
+                </Text>
+              </Pressable>
+            </View>
           </View>
+
+          {error && (
+            <Text style={styles.error}>
+              {error}
+            </Text>
+          )}
 
           <Pressable
             style={styles.button}
@@ -154,5 +174,38 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+
+  error: {
+    color: '#d00',
+    fontSize: 14,
+    marginBottom: 12,
+  },
+
+  passwordContainer: {
+    height: 50,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  passwordInput: {
+    flex: 1,
+    height: '100%',
+    paddingHorizontal: 14,
+    fontSize: 16,
+    color: '#222',
+  },
+
+  showPasswordButton: {
+    paddingHorizontal: 14,
+  },
+
+  showPasswordText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#555',
   },
 });

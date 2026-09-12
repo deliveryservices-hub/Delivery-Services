@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -6,8 +6,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { router } from 'expo-router';
-
+import { router, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 
@@ -20,10 +19,14 @@ type Route = {
 };
 
 export default function DriverHomeScreen() {
-  const { profile } = useAuth();
-
+  const { profile, signOut } = useAuth();
   const [routes, setRoutes] = useState<Route[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const handleSignOut = async () => {
+    await signOut();
+    router.replace('/login');
+  };
 
   const loadRoutes = useCallback(async () => {
     if (!profile?.id) return;
@@ -56,9 +59,11 @@ export default function DriverHomeScreen() {
     }
   }, [profile?.id]);
 
-  useEffect(() => {
-    loadRoutes();
-  }, [loadRoutes]);
+  useFocusEffect(
+    useCallback(() => {
+      loadRoutes();
+    }, [loadRoutes])
+  );
 
   return (
     <View style={styles.container}>
@@ -102,6 +107,15 @@ export default function DriverHomeScreen() {
           </Pressable>
         ))
       )}
+
+      <Pressable
+        style={styles.logoutButton}
+        onPress={handleSignOut}
+      >
+        <Text style={styles.logoutText}>
+          Cerrar sesión
+        </Text>
+      </Pressable>
     </View>
   );
 }
@@ -147,5 +161,16 @@ const styles = StyleSheet.create({
 
   empty: {
     color: '#777',
+  },
+
+  logoutButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+
+  logoutText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#d00',
   },
 });

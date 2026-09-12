@@ -1,24 +1,25 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import {useAuth } from '@/contexts/AuthContext';
 import { router } from 'expo-router';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function ProfileScreen() {
   const { signOut } = useAuth();
 
-  const handleLogout = async () => {
+  const handleSignOut = async () => {
     await signOut();
-    router.replace('/');
-  }
-
+    router.replace('/login');
+  };
+  
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Perfil</Text>
       <Text>Próximamente...</Text>
+
       <Pressable
-        style={styles.button}
-        onPress={handleLogout}
+        style={styles.logoutButton}
+        onPress={handleSignOut}
       >
-        <Text style={styles.buttonText}>
+        <Text style={styles.logoutText}>
           Cerrar sesión
         </Text>
       </Pressable>
@@ -38,18 +39,14 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 
-  button: {
-    height: 50,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#222',
-    marginTop: 8,
+  logoutButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
   },
 
-  buttonText: {
-    color: '#fff',
-    fontSize: 16,
+  logoutText: {
+    fontSize: 14,
     fontWeight: '600',
+    color: '#d00',
   },
 });

@@ -11,6 +11,7 @@ export async function createRoute(
       date,
       driver_id: driverId,
       service_time_minutes: serviceTimeMinutes,
+      status: 'PENDIENTE',
     })
     .select()
     .single();
@@ -33,12 +34,16 @@ export async function getRoutes() {
       service_time_minutes,
       started_at,
       driver_id,
+      created_at,
       users (
         id,
         name
+      ),
+      deliveries (
+        id
       )
     `)
-    .order('date', { ascending: false });
+    .order('created_at', { ascending: false });
 
   if (error) {
     console.error('Error cargando recorridos:', error);

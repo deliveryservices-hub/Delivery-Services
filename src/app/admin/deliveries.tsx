@@ -22,6 +22,9 @@ type Route = {
     id: string;
     name: string;
   }[];
+  deliveries: {
+    id: string;
+  }[];
 };
 
 export default function DeliveriesScreen() {
@@ -98,7 +101,7 @@ export default function DeliveriesScreen() {
               </Text>
 
               <Text style={styles.info}>
-                Entregas: 0
+                Entregas: {route.deliveries?.length ?? 0}
               </Text>
             </Pressable>
           ))
