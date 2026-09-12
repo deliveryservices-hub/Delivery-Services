@@ -45,6 +45,7 @@ export async function getDeliveriesByRoute(
       phone,
       address,
       status,
+      failure_reason,
       stop_index,
       eta_window_start,
       eta_window_end,
@@ -101,6 +102,26 @@ export async function updateDeliveryOrder(
 
   if (error) {
     console.error('Error actualizando orden:', error);
+    throw error;
+  }
+}
+
+export async function updateDeliveryStatus(
+  deliveryId: string,
+  status: string,
+  failureReason: string | null = null
+) {
+  const { error } = await supabase
+    .from('deliveries')
+    .update({
+      status,
+      failure_reason: failureReason,
+      last_updated_at: new Date().toISOString(),
+    })
+    .eq('id', deliveryId);
+
+  if (error) {
+    console.error('Error actualizando estado de entrega:', error);
     throw error;
   }
 }

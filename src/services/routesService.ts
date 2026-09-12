@@ -47,3 +47,32 @@ export async function getRoutes() {
 
   return data ?? [];
 }
+
+export async function startRoute(routeId: string) {
+  const { error } = await supabase
+    .from('routes')
+    .update({
+      status: 'EN_CURSO',
+      started_at: new Date().toISOString(),
+    })
+    .eq('id', routeId);
+
+  if (error) {
+    console.error('Error iniciando recorrido:', error);
+    throw error;
+  }
+}
+
+export async function completeRoute(routeId: string) {
+  const { error } = await supabase
+    .from('routes')
+    .update({
+      status: 'COMPLETADO',
+    })
+    .eq('id', routeId);
+
+  if (error) {
+    console.error('Error finalizando recorrido:', error);
+    throw error;
+  }
+}
