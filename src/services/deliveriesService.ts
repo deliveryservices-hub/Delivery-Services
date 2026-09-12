@@ -87,3 +87,20 @@ export async function updateDelivery(
 
   return data;
 }
+
+export async function updateDeliveryOrder(
+  deliveryId: string,
+  stopIndex: number
+) {
+  const { error } = await supabase
+    .from('deliveries')
+    .update({
+      stop_index: stopIndex,
+    })
+    .eq('id', deliveryId);
+
+  if (error) {
+    console.error('Error actualizando orden:', error);
+    throw error;
+  }
+}

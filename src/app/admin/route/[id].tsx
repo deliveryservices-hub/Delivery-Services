@@ -8,11 +8,19 @@ import {
   KeyboardAvoidingView,
   Platform,
   Button,
+  Alert,
+  Pressable,
 } from 'react-native';
+import DraggableFlatList, {
+  RenderItemParams,
+} from 'react-native-draggable-flatlist';
 import { useLocalSearchParams } from 'expo-router';
 import CreateDeliveryForm from '@/components/admin/CreateDeliveryForm';
 import { supabase } from '@/lib/supabase';
-import { getDeliveriesByRoute } from '@/services/deliveriesService';
+import { 
+  getDeliveriesByRoute,
+  updateDeliveryOrder 
+ } from '@/services/deliveriesService';
 
 type Route = {
   id: string;
@@ -49,6 +57,7 @@ export default function RouteDetailScreen() {
   const [selectedDelivery, setSelectedDelivery] =
   useState<Delivery | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
+  const [orderChanged, setOrderChanged] = useState(false);
 
   const loadData = useCallback(async () => {
     if (!id) return;
@@ -129,101 +138,189 @@ export default function RouteDetailScreen() {
       ) + 1
     : 1;
 
+  const handleSaveOrder = async () => {
+    try {
+      for (let index = 0; index < deliveries.length; index++) {
+        await updateDeliveryOrder(
+          deliveries[index].id,
+          index + 1
+        );
+      }
+
+      setDeliveries((current) =>
+        current.map((delivery, index) => ({
+          ...delivery,
+          stop_index: index + 1,
+        }))
+      );
+
+      setOrderChanged(false);
+
+      Alert.alert(
+        'Orden actualizado',
+        'El nuevo orden de las entregas se guardó correctamente.'
+      );
+    } catch (error) {
+      console.error('Error guardando orden:', error);
+
+      Alert.alert(
+        'Error',
+        'No se pudo guardar el nuevo orden.'
+      );
+
+      await loadData();
+    }
+  };
+
   return (
     <KeyboardAvoidingView
       style={styles.screen}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-        <ScrollView 
-        ref={scrollViewRef}
+      <DraggableFlatList
+        data={deliveries}
+        keyExtractor={(item) => item.id}
+        onDragEnd={({ data }) => {
+          const reordered = data.map((delivery, index) => ({
+            ...delivery,
+            stop_index: index + 1,
+          }));
+
+          setDeliveries(reordered);
+          setOrderChanged(true);
+        }}
         contentContainerStyle={styles.container}
         keyboardShouldPersistTaps="handled"
-        >
-        <Text style={styles.title}>
-            Detalle del recorrido
-        </Text>
 
-        <View style={styles.card}>
-            <Text style={styles.label}>Fecha</Text>
-            <Text style={styles.value}>{route.date}</Text>
-
-            <Text style={styles.label}>Chofer</Text>
-            <Text style={styles.value}>
-            {route.users?.[0]?.name ?? 'Sin asignar'}
+        ListHeaderComponent={
+          <>
+            <Text style={styles.title}>
+              Detalle del recorrido
             </Text>
 
-            <Text style={styles.label}>Estado</Text>
-            <Text style={styles.value}>
-            {route.status}
+            <View style={styles.card}>
+              <Text style={styles.label}>Fecha</Text>
+              <Text style={styles.value}>{route.date}</Text>
+
+              <Text style={styles.label}>Chofer</Text>
+              <Text style={styles.value}>
+                {route.users?.[0]?.name ?? 'Sin asignar'}
+              </Text>
+
+              <Text style={styles.label}>Estado</Text>
+              <Text style={styles.value}>
+                {route.status}
+              </Text>
+            </View>
+
+            <View style={styles.card}>
+              <Text style={styles.sectionTitle}>
+                Entregas ({deliveries.length})
+              </Text>
+
+              {deliveries.length === 0 && (
+                <Text style={styles.empty}>
+                  Este recorrido todavía no tiene entregas.
+                </Text>
+              )}
+
+              {deliveries.length > 0 && (
+                <Text style={styles.dragHint}>
+                  Mantené presionada una entrega para cambiarla de posición.
+                </Text>
+              )}
+            </View>
+          </>
+        }
+
+        renderItem={({
+          item,
+          drag,
+          isActive,
+        }) => (
+          <View
+            style={[
+              styles.deliveryCard,
+              isActive && styles.activeDelivery,
+            ]}
+          >
+            <View style={styles.deliveryHeader}>
+              <Text style={styles.stop}>
+                Parada {item.stop_index}
+              </Text>
+
+              <Pressable
+                onLongPress={drag}
+                disabled={isActive}
+                delayLongPress={150}
+                style={styles.dragButton}
+              >
+                <Text style={styles.dragButtonText}>☰</Text>
+              </Pressable>
+            </View>
+
+            <Text style={styles.deliveryName}>
+              {item.full_name}
             </Text>
-        </View>
 
-        <View style={styles.card}>
-            <Text style={styles.sectionTitle}>
-            Entregas ({deliveries.length})
+            <Text style={styles.info}>
+              Reclamo: {item.claim_number}
             </Text>
 
-            {deliveries.length === 0 ? (
-            <Text style={styles.empty}>
-                Este recorrido todavía no tiene entregas.
+            <Text style={styles.info}>
+              Email: {item.email}
             </Text>
-            ) : (
-            deliveries.map((delivery) => (
-                <View
-                key={delivery.id}
-                style={styles.deliveryCard}
-                >
-                <Text style={styles.stop}>
-                    Parada {delivery.stop_index}
-                </Text>
 
-                <Text style={styles.deliveryName}>
-                    {delivery.full_name}
-                </Text>
+            <Text style={styles.info}>
+              Teléfono: {item.phone ?? 'Sin informar'}
+            </Text>
 
-                <Text style={styles.info}>
-                    Reclamo: {delivery.claim_number}
-                </Text>
+            <Text style={styles.info}>
+              Dirección: {item.address}
+            </Text>
 
-                <Text style={styles.info}>
-                    Email: {delivery.email}
-                </Text>
+            <Text style={styles.info}>
+              Estado: {item.status}
+            </Text>
 
-                <Text style={styles.info}>
-                    Teléfono: {delivery.phone ?? 'Sin informar'}
-                </Text>
+            <Button
+              title="Editar"
+              onPress={() => {
+                setSelectedDelivery(item);
+              }}
+            />
+          </View>
+        )}
 
-                <Text style={styles.info}>
-                    Dirección: {delivery.address}
-                </Text>
-
-                <Text style={styles.info}>
-                    Estado: {delivery.status}
-                </Text>
-
+        ListFooterComponent={
+          <>
+            {orderChanged && (
+              <View style={styles.saveOrderContainer}>
                 <Button
-                    title="Editar"
-                    onPress={() => {console.log('EDITAR ENTREGA:', delivery.id);setSelectedDelivery(delivery)}}
+                  title="Guardar nuevo orden"
+                  onPress={handleSaveOrder}
                 />
-                </View>
-            ))
+              </View>
             )}
-        </View>
 
-        <View style={styles.card}>
-            <CreateDeliveryForm
+            <View style={[styles.card, styles.formCard]}>
+              <CreateDeliveryForm
                 routeId={route.id}
                 nextStopIndex={nextStopIndex}
                 delivery={selectedDelivery}
                 onDeliveryCreated={loadData}
                 onDeliveryUpdated={() => {
-                    setSelectedDelivery(null);
-                    loadData();
+                  setSelectedDelivery(null);
+                  loadData();
                 }}
-                onCancelEdit={() => setSelectedDelivery(null)}
-            />
-        </View>
-        </ScrollView>
+                onCancelEdit={() =>
+                  setSelectedDelivery(null)
+                }
+              />
+            </View>
+          </>
+        }
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -237,6 +334,44 @@ const styles = StyleSheet.create({
 
   screen: {
     flex: 1,
+  },
+
+  formCard: {
+    marginTop: 20,
+  },
+
+  dragHint: {
+    color: '#777',
+    fontSize: 13,
+    marginTop: 4,
+  },
+
+  dragButton: {
+    width: 50,
+    height: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+    borderRadius: 8,
+  },
+
+  dragButtonText: {
+    fontSize: 26,
+    color: '#555',
+  },
+
+  deliveryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+
+  activeDelivery: {
+    opacity: 0.8,
+  },
+
+  saveOrderContainer: {
+    marginBottom: 16,
   },
 
   center: {
