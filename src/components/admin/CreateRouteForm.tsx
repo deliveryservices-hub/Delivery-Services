@@ -23,10 +23,16 @@ type CreateRouteFormProps = {
 export default function CreateRouteForm({
   onRouteCreated,
 }: CreateRouteFormProps) {
-  const [date, setDate] = useState(
-    new Date().toISOString().split('T')[0]
-  );
+  const getTodayLocal = () => {
+    const today = new Date();
 
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+
+    return `${year}-${month}-${day}`;
+  };
+  const [date, setDate] = useState(getTodayLocal());
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [driverId, setDriverId] = useState('');
   const [serviceTime, setServiceTime] = useState('8');

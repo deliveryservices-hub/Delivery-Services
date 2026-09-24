@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+
 import {
   Alert,
   Button,
@@ -40,7 +41,6 @@ export default function CreateDeliveryForm({
   onCancelEdit,
 }: CreateDeliveryFormProps) {
   const isEditing = !!delivery;
-  console.log('FORM MODE:', isEditing, delivery?.id);
 
   const [claimNumber, setClaimNumber] = useState('');
   const [name, setName] = useState('');
@@ -173,6 +173,22 @@ export default function CreateDeliveryForm({
         {isEditing ? 'Editar entrega' : 'Nueva entrega'}
       </Text>
 
+      {isEditing && delivery && (
+        <View style={styles.editReference}>
+          <Text style={styles.editReferenceLabel}>
+            Entrega seleccionada
+          </Text>
+
+          <Text style={styles.editReferenceClaim}>
+            Reclamo {delivery.claim_number}
+          </Text>
+        </View>
+      )}
+
+      <Text style={styles.sectionTitle}>
+        Identificación
+      </Text>
+
       <Text style={styles.label}>
         Número de reclamo
       </Text>
@@ -206,6 +222,10 @@ export default function CreateDeliveryForm({
         placeholder="Nombre del pasajero"
       />
 
+      <Text style={styles.sectionTitle}>
+        Contacto
+      </Text>
+
       <Text style={styles.label}>
         Email
       </Text>
@@ -231,6 +251,10 @@ export default function CreateDeliveryForm({
         keyboardType="phone-pad"
       />
 
+      <Text style={styles.sectionTitle}>
+        Datos de entrega
+      </Text>
+
       <Text style={styles.label}>
         Dirección
       </Text>
@@ -244,9 +268,15 @@ export default function CreateDeliveryForm({
       />
 
       {!isEditing && (
-        <Text style={styles.stopInfo}>
-          Parada asignada: {nextStopIndex}
-        </Text>
+        <View style={styles.stopInfo}>
+          <Text style={styles.stopInfoLabel}>
+            Parada asignada
+          </Text>
+
+          <Text style={styles.stopNumber}>
+            {nextStopIndex}
+          </Text>
+        </View>
       )}
 
       <View style={styles.button}>
@@ -286,13 +316,38 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 22,
     fontWeight: 'bold',
+    marginBottom: 4,
+  },
+
+  editReference: {
+    backgroundColor: '#f5f5f5',
+    borderRadius: 10,
+    padding: 12,
     marginBottom: 8,
+  },
+
+  editReferenceLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 3,
+  },
+
+  editReferenceClaim: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginTop: 12,
+    marginBottom: 2,
   },
 
   label: {
     fontSize: 15,
     fontWeight: '600',
-    marginTop: 6,
+    marginTop: 4,
   },
 
   input: {
@@ -320,12 +375,27 @@ const styles = StyleSheet.create({
   },
 
   stopInfo: {
-    color: '#666',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+    padding: 12,
     marginTop: 4,
   },
 
+  stopInfoLabel: {
+    fontSize: 14,
+    color: '#666',
+  },
+
+  stopNumber: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+
   button: {
-    marginTop: 10,
+    marginTop: 14,
   },
 
   cancelButton: {

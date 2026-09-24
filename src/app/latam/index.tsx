@@ -18,6 +18,7 @@ type Delivery = {
   address: string;
   status: string;
   stop_index: number;
+  failure_reason: string | null;
 };
 
 type Route = {
@@ -60,7 +61,8 @@ export default function LatamScreen() {
             full_name,
             address,
             status,
-            stop_index
+            stop_index,
+            failure_reason
           )
         `)
         .eq('date', today)
@@ -103,6 +105,42 @@ export default function LatamScreen() {
     );
   }
 
+  const allDeliveries = routes.flatMap(
+    (route) => route.deliveries ?? []
+  );
+
+  const totalDeliveries = allDeliveries.length;
+
+  const pendingDeliveries = allDeliveries.filter(
+    (delivery) => delivery.status === 'PENDIENTE'
+  ).length;
+
+  const inProgressDeliveries = allDeliveries.filter(
+    (delivery) => delivery.status === 'EN_CAMINO'
+  ).length;
+
+  const completedDeliveries = allDeliveries.filter(
+    (delivery) => delivery.status === 'ENTREGADO'
+  ).length;
+
+  const failedDeliveries = allDeliveries.filter(
+    (delivery) => delivery.status === 'NO_ENTREGADO'
+  ).length;
+
+  const pendingList = allDeliveries.filter(
+    delivery =>
+      delivery.status === 'PENDIENTE' ||
+      delivery.status === 'EN_CAMINO'
+  );
+
+  const completedList = allDeliveries.filter(
+    delivery => delivery.status === 'ENTREGADO'
+  );
+
+  const failedList = allDeliveries.filter(
+    delivery => delivery.status === 'NO_ENTREGADO'
+  );
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.header}>
@@ -123,57 +161,129 @@ export default function LatamScreen() {
         </Pressable>
       </View>
 
-      {routes.length === 0 ? (
-        <Text style={styles.empty}>
-          No hay recorridos para hoy.
+      <View style={styles.summaryCard}>
+        <Text style={styles.summaryTitle}>Resumen del día</Text>
+
+        <Text style={styles.summaryText}>
+          Total de entregas: {totalDeliveries}
         </Text>
-      ) : (
-        routes.map((route) => (
-          <View key={route.id} style={styles.routeCard}>
-            <Text style={styles.driverName}>
-              Chofer:{' '}
-              {route.users?.[0]?.name ?? 'Sin asignar'}
-            </Text>
 
-            <Text style={styles.info}>
-              Estado del recorrido: {route.status}
-            </Text>
+        <Text style={styles.summaryText}>
+          Pendientes: {pendingDeliveries}
+        </Text>
 
-            <Text style={styles.info}>
-              Entregas: {route.deliveries.length}
-            </Text>
+        <Text style={styles.summaryText}>
+          En camino: {inProgressDeliveries}
+        </Text>
 
-            <View style={styles.deliveriesContainer}>
-              {route.deliveries.map((delivery) => (
-                <View
-                  key={delivery.id}
-                  style={styles.deliveryCard}
-                >
-                  <Text style={styles.stop}>
-                    Parada {delivery.stop_index}
-                  </Text>
+        <Text style={styles.summaryText}>
+          Entregadas: {completedDeliveries}
+        </Text>
 
-                  <Text style={styles.deliveryName}>
-                    {delivery.full_name}
-                  </Text>
+        <Text style={styles.summaryText}>
+          No entregadas: {failedDeliveries}
+        </Text>
+      </View>
 
-                  <Text style={styles.info}>
-                    Reclamo: {delivery.claim_number}
-                  </Text>
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>
+          Pendientes / En reparto
+        </Text>
 
-                  <Text style={styles.info}>
-                    Dirección: {delivery.address}
-                  </Text>
+        {pendingList.length === 0 ? (
+          <Text style={styles.empty}>
+            No hay entregas pendientes.
+          </Text>
+        ) : (
+          pendingList.map(delivery => (
+            <View key={delivery.id} style={styles.deliveryCard}>
+              <Text style={styles.stop}>
+                Reclamo: {delivery.claim_number}
+              </Text>
 
-                  <Text style={styles.info}>
-                    Estado: {delivery.status}
-                  </Text>
-                </View>
-              ))}
+              <Text style={styles.deliveryName}>
+                {delivery.full_name}
+              </Text>
+
+              <Text style={styles.info}>
+                Dirección: {delivery.address}
+              </Text>
+
+              <Text style={styles.info}>
+                Estado: {delivery.status}
+              </Text>
             </View>
-          </View>
-        ))
-      )}
+          ))
+        )}
+      </View>
+      
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>
+          Entregadas
+        </Text>
+
+        {completedList.length === 0 ? (
+          <Text style={styles.empty}>
+            No hay entregas realizadas todavía.
+          </Text>
+        ) : (
+          completedList.map(delivery => (
+            <View key={delivery.id} style={styles.deliveryCard}>
+              <Text style={styles.stop}>
+                Reclamo: {delivery.claim_number}
+              </Text>
+
+              <Text style={styles.deliveryName}>
+                {delivery.full_name}
+              </Text>
+
+              <Text style={styles.info}>
+                Dirección: {delivery.address}
+              </Text>
+
+              <Text style={styles.info}>
+                Estado: Entregada
+              </Text>
+            </View>
+          ))
+        )}
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>
+          No entregadas
+        </Text>
+
+        {failedList.length === 0 ? (
+          <Text style={styles.empty}>
+            No hay entregas no realizadas.
+          </Text>
+        ) : (
+          failedList.map(delivery => (
+            <View key={delivery.id} style={styles.deliveryCard}>
+              <Text style={styles.stop}>
+                Reclamo: {delivery.claim_number}
+              </Text>
+
+              <Text style={styles.deliveryName}>
+                {delivery.full_name}
+              </Text>
+
+              <Text style={styles.info}>
+                Dirección: {delivery.address}
+              </Text>
+
+              <Text style={styles.info}>
+                Estado: No entregada
+              </Text>
+
+              <Text style={styles.info}>
+                Motivo: {delivery.failure_reason ?? 'Sin informar'}
+              </Text>
+            </View>
+          ))
+        )}
+      </View>
     </ScrollView>
   );
 }
@@ -266,5 +376,33 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#d00',
+  },
+
+  summaryCard: {
+    backgroundColor: '#fff',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+
+  summaryTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 16,
+  },
+
+  summaryText: {
+    fontSize: 15,
+    marginTop: 6,
+  },
+
+  section: {
+    marginBottom: 20,
+  },
+
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 10,
   },
 });

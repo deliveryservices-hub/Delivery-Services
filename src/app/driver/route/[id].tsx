@@ -19,6 +19,9 @@ import {
   startRoute,
   completeRoute,
 } from '@/services/routesService';
+import * as Location from 'expo-location';
+import { LOCATION_TASK_NAME } from '@/services/locationTask';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type Route = {
   id: string;
@@ -88,14 +91,74 @@ export default function DriverRouteDetailScreen() {
     }
   }, [id]);
 
+  const startLocationTracking = async () => {
+    const { status: foregroundStatus } =
+      await Location.requestForegroundPermissionsAsync();
+
+    if (foregroundStatus !== 'granted') {
+      Alert.alert(
+        'Permiso de ubicación',
+        'Necesitamos permiso para acceder a la ubicación del dispositivo.'
+      );
+      return false;
+    }
+
+    const { status: backgroundStatus } =
+      await Location.requestBackgroundPermissionsAsync();
+
+    if (backgroundStatus !== 'granted') {
+      Alert.alert(
+        'Permiso de ubicación en segundo plano',
+        'Necesitamos permiso para poder seguir registrando la ubicación mientras usás otra aplicación.'
+      );
+      return false;
+    }
+
+    const isTracking = await Location.hasStartedLocationUpdatesAsync(
+      LOCATION_TASK_NAME
+    );
+
+    if (!isTracking) {
+      await Location.startLocationUpdatesAsync(
+        LOCATION_TASK_NAME,
+        {
+          accuracy: Location.Accuracy.High,
+          timeInterval: 30000,
+          distanceInterval: 50,
+          foregroundService: {
+            notificationTitle: 'Recorrido en curso',
+            notificationBody: 'La ubicación se está actualizando.',
+          },
+        }
+      );
+    }
+
+    return true;
+  };
+
   const handleStartRoute = async () => {
     if (!route) return;
 
     try {
+      await AsyncStorage.setItem(
+        'active_route_id',
+        route.id
+      );
+
       await startRoute(route.id);
+
+      const trackingStarted = await startLocationTracking();
+
+      if (!trackingStarted) {
+        await AsyncStorage.removeItem('active_route_id');
+        return;
+      }
+
       await loadData();
     } catch (error) {
       console.error('Error iniciando recorrido:', error);
+
+      await AsyncStorage.removeItem('active_route_id');
     }
   };
 
@@ -161,6 +224,18 @@ export default function DriverRouteDetailScreen() {
     if (!route) return;
 
     try {
+      const isTracking = await Location.hasStartedLocationUpdatesAsync(
+        LOCATION_TASK_NAME
+      );
+
+      if (isTracking) {
+        await Location.stopLocationUpdatesAsync(
+          LOCATION_TASK_NAME
+        );
+      }
+
+      await AsyncStorage.removeItem('active_route_id');
+
       await completeRoute(route.id);
       await loadData();
     } catch (error) {

@@ -28,11 +28,11 @@ type Route = {
   status: string;
   service_time_minutes: number;
   started_at: string | null;
-  driver_id: string;
-  users: {
+  driver_id: string | null;
+  driver: {
     id: string;
-    name: string;
-  }[];
+    name: string | null;
+  } | null;
 };
 
 type Delivery = {
@@ -56,6 +56,7 @@ export default function RouteDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [selectedDelivery, setSelectedDelivery] =
   useState<Delivery | null>(null);
+  const [showDeliveryForm, setShowDeliveryForm] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
   const [orderChanged, setOrderChanged] = useState(false);
 
@@ -73,11 +74,7 @@ export default function RouteDetailScreen() {
           status,
           service_time_minutes,
           started_at,
-          driver_id,
-          users (
-            id,
-            name
-          )
+          driver_id
         `)
         .eq('id', id)
         .single();
@@ -87,7 +84,27 @@ export default function RouteDetailScreen() {
         return;
       }
 
-      setRoute(data as Route);
+      let driver = null;
+
+      if (data.driver_id) {
+        const { data: driverData, error: driverError } =
+          await supabase
+            .from('users')
+            .select('id, name')
+            .eq('id', data.driver_id)
+            .maybeSingle();
+
+        if (driverError) {
+          console.error('Error cargando chofer:', driverError);
+        }
+
+        driver = driverData;
+      }
+
+      setRoute({
+        ...data,
+        driver,
+      });
 
       const deliveriesData = await getDeliveriesByRoute(id);
 
@@ -199,17 +216,46 @@ export default function RouteDetailScreen() {
             </Text>
 
             <View style={styles.card}>
+              <Text style={styles.label}>CHOFER ASIGNADO</Text>
+
+              <Text style={styles.driverName}>
+                {route.driver?.name ?? 'Sin asignar'}
+              </Text>
+
+              <View style={styles.divider} />
+
               <Text style={styles.label}>Fecha</Text>
               <Text style={styles.value}>{route.date}</Text>
 
-              <Text style={styles.label}>Chofer</Text>
-              <Text style={styles.value}>
-                {route.users?.[0]?.name ?? 'Sin asignar'}
-              </Text>
-
               <Text style={styles.label}>Estado</Text>
-              <Text style={styles.value}>
-                {route.status}
+
+              <View
+                style={[
+                  styles.statusBadge,
+                  route.status === 'PENDIENTE' &&
+                    styles.statusPending,
+                  route.status === 'EN_CURSO' &&
+                    styles.statusInProgress,
+                  route.status === 'COMPLETADO' &&
+                    styles.statusCompleted,
+                ]}
+              >
+                <Text style={styles.statusText}>
+                  {route.status === 'PENDIENTE'
+                    ? 'Pendiente'
+                    : route.status === 'EN_CURSO'
+                      ? 'En curso'
+                      : route.status === 'COMPLETADO'
+                        ? 'Completado'
+                        : route.status}
+                </Text>
+              </View>
+
+              <View style={styles.divider} />
+
+              <Text style={styles.label}>Total de entregas</Text>
+              <Text style={styles.deliveryCount}>
+                {deliveries.length}
               </Text>
             </View>
 
@@ -287,6 +333,7 @@ export default function RouteDetailScreen() {
               title="Editar"
               onPress={() => {
                 setSelectedDelivery(item);
+                setShowDeliveryForm(true);
               }}
             />
           </View>
@@ -303,20 +350,50 @@ export default function RouteDetailScreen() {
               </View>
             )}
 
-            <View style={[styles.card, styles.formCard]}>
-              <CreateDeliveryForm
-                routeId={route.id}
-                nextStopIndex={nextStopIndex}
-                delivery={selectedDelivery}
-                onDeliveryCreated={loadData}
-                onDeliveryUpdated={() => {
-                  setSelectedDelivery(null);
-                  loadData();
-                }}
-                onCancelEdit={() =>
-                  setSelectedDelivery(null)
-                }
-              />
+            <View style={styles.formSection}>
+              {!showDeliveryForm ? (
+                <Button
+                  title="＋ Agregar entrega"
+                  onPress={() => setShowDeliveryForm(true)}
+                />
+              ) : (
+                <>
+                  <View style={styles.formHeader}>
+                    <Text style={styles.formHeaderTitle}>
+                      {selectedDelivery
+                        ? 'Editar entrega'
+                        : 'Nueva entrega'}
+                    </Text>
+
+                    <Button
+                      title="Ocultar formulario"
+                      onPress={() => {
+                        setSelectedDelivery(null);
+                        setShowDeliveryForm(false);
+                      }}
+                    />
+                  </View>
+
+                  <CreateDeliveryForm
+                    routeId={id}
+                    nextStopIndex={deliveries.length + 1}
+                    delivery={selectedDelivery}
+                    onDeliveryCreated={() => {
+                      loadData();
+                      setSelectedDelivery(null);
+                    }}
+                    onDeliveryUpdated={() => {
+                      loadData();
+                      setSelectedDelivery(null);
+                      setShowDeliveryForm(false);
+                    }}
+                    onCancelEdit={() => {
+                      setSelectedDelivery(null);
+                      setShowDeliveryForm(false);
+                    }}
+                  />
+                </>
+              )}
             </View>
           </>
         }
@@ -440,4 +517,65 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginBottom: 3,
   },
+
+  driverName: {
+    fontSize: 22,
+    fontWeight: '700',
+    marginTop: 6,
+  },
+
+  divider: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    marginVertical: 16,
+  },
+
+  statusBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    marginTop: 8,
+  },
+
+  statusText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#263238',
+  },
+
+  statusPending: {
+    backgroundColor: '#FFF3CD',
+  },
+
+  statusInProgress: {
+    backgroundColor: '#D9EDF7',
+  },
+
+  statusCompleted: {
+    backgroundColor: '#DFF0D8',
+  },
+
+  deliveryCount: {
+    fontSize: 26,
+    fontWeight: '700',
+    marginTop: 5,
+  },
+  
+  formSection: {
+    marginTop: 20,
+    marginBottom: 20,
+  },
+
+  formHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+
+  formHeaderTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+},
 });
