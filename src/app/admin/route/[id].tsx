@@ -11,13 +11,19 @@ import {
   Alert,
   Pressable,
 } from 'react-native';
+import MapView, {
+  Marker,
+  Polyline,
+  PROVIDER_GOOGLE,
+} from 'react-native-maps';
 import DraggableFlatList, {
   RenderItemParams,
 } from 'react-native-draggable-flatlist';
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import CreateDeliveryForm from '@/components/admin/CreateDeliveryForm';
 import { supabase } from '@/lib/supabase';
 import { 
+  deleteDelivery,
   getDeliveriesByRoute,
   updateDeliveryOrder 
  } from '@/services/deliveriesService';
@@ -49,6 +55,14 @@ type Delivery = {
   last_updated_at: string | null;
 };
 
+type DriverLocation = {
+  id: string;
+  latitude: number;
+  longitude: number;
+  accuracy: number | null;
+  recorded_at: string;
+};
+
 export default function RouteDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [route, setRoute] = useState<Route | null>(null);
@@ -57,8 +71,9 @@ export default function RouteDetailScreen() {
   const [selectedDelivery, setSelectedDelivery] =
   useState<Delivery | null>(null);
   const [showDeliveryForm, setShowDeliveryForm] = useState(false);
-  const scrollViewRef = useRef<ScrollView>(null);
+  const listRef = useRef<any>(null);
   const [orderChanged, setOrderChanged] = useState(false);
+  const [locations, setLocations] = useState<DriverLocation[]>([]);
 
   const loadData = useCallback(async () => {
     if (!id) return;
@@ -109,6 +124,32 @@ export default function RouteDetailScreen() {
       const deliveriesData = await getDeliveriesByRoute(id);
 
       setDeliveries(deliveriesData as Delivery[]);
+
+      if (data.driver_id) {
+        const { data: locationsData, error: locationsError } =
+          await supabase
+            .from('driver_locations')
+            .select(
+              'id, latitude, longitude, accuracy, recorded_at'
+            )
+            .eq('route_id', id)
+            .order('recorded_at', {
+              ascending: true,
+            });
+
+        if (locationsError) {
+          console.error(
+            'Error cargando ubicaciones:',
+            locationsError
+          );
+        } else {
+          setLocations(
+            (locationsData ?? []) as DriverLocation[]
+          );
+        }
+      } else {
+        setLocations([]);
+      }
     } catch (error) {
       console.error('Error cargando detalle:', error);
     } finally {
@@ -121,12 +162,22 @@ export default function RouteDetailScreen() {
   }, [loadData]);
 
   useEffect(() => {
+    if (route?.status !== 'EN_CURSO') return;
+
+    const interval = setInterval(() => {
+      loadData();
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [route?.status, loadData]);
+
+  useEffect(() => {
     if (selectedDelivery) {
-        setTimeout(() => {
-        scrollViewRef.current?.scrollToEnd({
-            animated: true,
+      setTimeout(() => {
+        listRef.current?.scrollToEnd({
+          animated: true,
         });
-        }, 100);
+      }, 100);
     }
   }, [selectedDelivery]);
 
@@ -146,15 +197,6 @@ export default function RouteDetailScreen() {
     );
   }
 
-  const nextStopIndex =
-  deliveries.length > 0
-    ? Math.max(
-        ...deliveries.map(
-          (delivery) => delivery.stop_index
-        )
-      ) + 1
-    : 1;
-
   const handleSaveOrder = async () => {
     try {
       for (let index = 0; index < deliveries.length; index++) {
@@ -162,7 +204,7 @@ export default function RouteDetailScreen() {
           deliveries[index].id,
           index + 1
         );
-      }
+      };
 
       setDeliveries((current) =>
         current.map((delivery, index) => ({
@@ -189,6 +231,41 @@ export default function RouteDetailScreen() {
     }
   };
 
+  const formatDate = (date: string) => {
+    const [year, month, day] = date.split('-');
+    return `${day}/${month}/${year}`;
+  };
+
+  const handleDeleteDelivery = (delivery: Delivery) => {
+    Alert.alert(
+      'Eliminar entrega',
+      `¿Seguro que querés eliminar la entrega de ${delivery.full_name}?`,
+      [
+        {
+          text: 'Cancelar',
+          style: 'cancel',
+        },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteDelivery(delivery.id);
+              await loadData();
+            } catch (error) {
+              console.error('Error eliminando entrega:', error);
+
+              Alert.alert(
+                'Error',
+                'No se pudo eliminar la entrega.'
+              );
+            }
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <KeyboardAvoidingView
       style={styles.screen}
@@ -196,6 +273,7 @@ export default function RouteDetailScreen() {
     >
       <DraggableFlatList
         data={deliveries}
+        ref={listRef}
         keyExtractor={(item) => item.id}
         onDragEnd={({ data }) => {
           const reordered = data.map((delivery, index) => ({
@@ -211,6 +289,15 @@ export default function RouteDetailScreen() {
 
         ListHeaderComponent={
           <>
+            <Pressable
+              style={styles.backButton}
+              onPress={() => router.back()}
+            >
+              <Text style={styles.backButtonText}>
+                ← Volver
+              </Text>
+            </Pressable>
+
             <Text style={styles.title}>
               Detalle del recorrido
             </Text>
@@ -224,10 +311,25 @@ export default function RouteDetailScreen() {
 
               <View style={styles.divider} />
 
-              <Text style={styles.label}>Fecha</Text>
-              <Text style={styles.value}>{route.date}</Text>
+              <View style={styles.routeInfoRow}>
+                <View style={styles.routeInfoItem}>
+                  <Text style={styles.label}>Fecha</Text>
+                  <Text style={styles.value}>
+                    {formatDate(route.date)}
+                  </Text>
+                </View>
 
-              <Text style={styles.label}>Estado</Text>
+                <View style={styles.routeInfoItem}>
+                  <Text style={styles.label}>Tiempo por entrega</Text>
+                  <Text style={styles.value}>
+                    {route.service_time_minutes} min
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.divider} />
+
+              <Text style={styles.label}>ESTADO</Text>
 
               <View
                 style={[
@@ -242,22 +344,40 @@ export default function RouteDetailScreen() {
               >
                 <Text style={styles.statusText}>
                   {route.status === 'PENDIENTE'
-                    ? 'Pendiente'
+                    ? '🟡 Pendiente'
                     : route.status === 'EN_CURSO'
-                      ? 'En curso'
+                      ? '🔵 En curso'
                       : route.status === 'COMPLETADO'
-                        ? 'Completado'
+                        ? '🟢 Completado'
                         : route.status}
                 </Text>
               </View>
 
               <View style={styles.divider} />
 
-              <Text style={styles.label}>Total de entregas</Text>
+              <Text style={styles.label}>TOTAL DE ENTREGAS</Text>
+
               <Text style={styles.deliveryCount}>
                 {deliveries.length}
               </Text>
             </View>
+
+            <View style={styles.mapCard}>
+  <Text style={styles.sectionTitle}>
+    Recorrido del chofer
+  </Text>
+
+  <MapView
+    provider={PROVIDER_GOOGLE}
+    style={styles.map}
+    initialRegion={{
+      latitude: -34.6037,
+      longitude: -58.3816,
+      latitudeDelta: 0.05,
+      longitudeDelta: 0.05,
+    }}
+  />
+</View>
 
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>
@@ -314,20 +434,42 @@ export default function RouteDetailScreen() {
             </Text>
 
             <Text style={styles.info}>
-              Email: {item.email}
+              ✉ {item.email}
             </Text>
 
             <Text style={styles.info}>
-              Teléfono: {item.phone ?? 'Sin informar'}
+              ☎ {item.phone ?? 'Sin informar'}
             </Text>
 
-            <Text style={styles.info}>
-              Dirección: {item.address}
+            <Text style={styles.address}>
+              📍 {item.address}
             </Text>
 
-            <Text style={styles.info}>
-              Estado: {item.status}
-            </Text>
+            <View
+              style={[
+                styles.deliveryStatus,
+                item.status === 'PENDIENTE' &&
+                  styles.deliveryStatusPending,
+                item.status === 'EN_CAMINO' &&
+                  styles.deliveryStatusInProgress,
+                item.status === 'ENTREGADO' &&
+                  styles.deliveryStatusCompleted,
+                item.status === 'NO_ENTREGADO' &&
+                  styles.deliveryStatusFailed,
+              ]}
+            >
+              <Text style={styles.deliveryStatusText}>
+                {item.status === 'PENDIENTE'
+                  ? '🟡 Pendiente'
+                  : item.status === 'EN_CAMINO'
+                    ? '🔵 En reparto'
+                    : item.status === 'ENTREGADO'
+                      ? '🟢 Entregada'
+                      : item.status === 'NO_ENTREGADO'
+                        ? '🔴 No entregada'
+                        : item.status}
+              </Text>
+            </View>
 
             <Button
               title="Editar"
@@ -335,6 +477,12 @@ export default function RouteDetailScreen() {
                 setSelectedDelivery(item);
                 setShowDeliveryForm(true);
               }}
+            />
+
+            <Button
+              title="Eliminar"
+              color="#d00"
+              onPress={() => handleDeleteDelivery(item)}
             />
           </View>
         )}
@@ -577,5 +725,76 @@ const styles = StyleSheet.create({
   formHeaderTitle: {
     fontSize: 20,
     fontWeight: '700',
-},
+  },
+
+  backButton: {
+    alignSelf: 'flex-start',
+    marginBottom: 12,
+  },
+
+  backButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
+  routeInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 20,
+  },
+
+  routeInfoItem: {
+    flex: 1,
+  },
+
+  address: {
+    fontSize: 15,
+    fontWeight: '500',
+    marginBottom: 6,
+  },
+
+  deliveryStatus: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+    marginTop: 6,
+    marginBottom: 10,
+  },
+
+  deliveryStatusText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+
+  deliveryStatusPending: {
+    backgroundColor: '#FFF3CD',
+  },
+
+  deliveryStatusInProgress: {
+    backgroundColor: '#D9EDF7',
+  },
+
+  deliveryStatusCompleted: {
+    backgroundColor: '#DFF0D8',
+  },
+
+  deliveryStatusFailed: {
+    backgroundColor: '#F2DEDE',
+  },
+
+  mapCard: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+
+  map: {
+    width: '100%',
+    height: 300,
+    borderRadius: 12,
+    marginTop: 10,
+  },
 });

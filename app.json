@@ -25,7 +25,10 @@
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_BACKGROUND_LOCATION"
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.RECEIVE_BOOT_COMPLETED"
       ],
       "package": "com.deliveryservices.deliveryservicesmobile"
     },
@@ -47,10 +50,18 @@
         "expo-location",
         {
           "locationAlwaysAndWhenInUsePermission": "Permitir que la aplicación acceda a la ubicación del dispositivo.",
-          "isIosBackgroundLocationEnabled": true
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      "@react-native-community/datetimepicker",
+      [
+        "react-native-maps",
+        {
+          "androidGoogleMapsApiKey": "process.env.GOOGLE_MAPS_API_KEY"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

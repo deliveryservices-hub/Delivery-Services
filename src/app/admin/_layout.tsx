@@ -1,7 +1,12 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function AdminLayout() {
+  const { profile } = useAuth();
+
+  const canDrive = profile?.role === 'ADMIN';
+
   return (
     <Tabs
       screenOptions={{
@@ -25,12 +30,13 @@ export default function AdminLayout() {
       />
 
       <Tabs.Screen
-        name="claims"
+        name="driver"
         options={{
-          title: 'Reclamos',
+          title: 'Recorridos',
+          href: canDrive ? undefined : null,
           tabBarIcon: ({ color, size }) => (
             <Ionicons
-              name="document-text-outline"
+              name="car-outline"
               size={size}
               color={color}
             />
@@ -44,7 +50,7 @@ export default function AdminLayout() {
           title: 'Entregas',
           tabBarIcon: ({ color, size }) => (
             <Ionicons
-              name="car-outline"
+              name="cube-outline"
               size={size}
               color={color}
             />

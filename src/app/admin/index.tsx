@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -7,7 +7,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 
@@ -86,7 +86,6 @@ export default function AdminScreen() {
       }));
 
       setRoutes(routesWithDrivers);
-      console.log('Rutas del dashboard:', data);
     } catch (error) {
       console.error('Error cargando dashboard:', error);
     } finally {
@@ -94,9 +93,11 @@ export default function AdminScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    loadDashboard();
-  }, [loadDashboard]);
+  useFocusEffect(
+    useCallback(() => {
+      loadDashboard();
+    }, [loadDashboard])
+  );
 
   const allDeliveries = routes.flatMap(
     (route) => route.deliveries ?? []

@@ -10,7 +10,6 @@ import {
 } from 'react-native';
 
 import { router, useFocusEffect } from 'expo-router';
-
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 
@@ -24,7 +23,7 @@ type Route = {
 
 type Tab = 'today' | 'upcoming' | 'history';
 
-export default function DriverHomeScreen() {
+export default function AdminDriverScreen() {
   const { profile } = useAuth();
 
   const [routes, setRoutes] = useState<Route[]>([]);
@@ -127,15 +126,13 @@ export default function DriverHomeScreen() {
   };
 
   return (
-    <ScrollView
-      contentContainerStyle={styles.container}
-    >
+    <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>
         Mis recorridos
       </Text>
 
       <Text style={styles.greeting}>
-        Hola, {profile?.name ?? 'Chofer'}
+        Hola, {profile?.name ?? 'Admin'}
       </Text>
 
       <View style={styles.tabs}>
@@ -210,9 +207,9 @@ export default function DriverHomeScreen() {
             style={styles.routeCard}
             onPress={() =>
               router.push({
-                pathname: '/driver/route/[id]',
+                pathname: '/admin/driver/route/[id]',
                 params: { id: route.id },
-              })
+                })
             }
           >
             <View style={styles.routeHeader}>

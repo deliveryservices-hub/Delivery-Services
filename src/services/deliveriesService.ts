@@ -125,3 +125,15 @@ export async function updateDeliveryStatus(
     throw error;
   }
 }
+
+export async function deleteDelivery(deliveryId: string) {
+  const { error } = await supabase
+    .from('deliveries')
+    .delete()
+    .eq('id', deliveryId);
+
+  if (error) {
+    console.error('Error eliminando entrega:', error);
+    throw error;
+  }
+}

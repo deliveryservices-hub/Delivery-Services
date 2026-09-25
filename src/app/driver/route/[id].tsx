@@ -140,25 +140,45 @@ export default function DriverRouteDetailScreen() {
     if (!route) return;
 
     try {
-      await AsyncStorage.setItem(
-        'active_route_id',
-        route.id
-      );
-
-      await startRoute(route.id);
-
+      // Primero verificamos permisos e iniciamos el GPS
       const trackingStarted = await startLocationTracking();
 
       if (!trackingStarted) {
-        await AsyncStorage.removeItem('active_route_id');
         return;
       }
+
+      // Solo si el GPS se inició correctamente guardamos
+      // qué recorrido está activo
+      await AsyncStorage.setItem('active_route_id', route.id);
+
+      // Finalmente iniciamos el recorrido
+      await startRoute(route.id);
 
       await loadData();
     } catch (error) {
       console.error('Error iniciando recorrido:', error);
 
+      // Limpiamos por seguridad si algo falla
       await AsyncStorage.removeItem('active_route_id');
+
+      // Si el GPS llegó a iniciarse antes del error,
+      // también intentamos detenerlo
+      try {
+        const isTracking = await Location.hasStartedLocationUpdatesAsync(
+          LOCATION_TASK_NAME
+        );
+
+        if (isTracking) {
+          await Location.stopLocationUpdatesAsync(
+            LOCATION_TASK_NAME
+          );
+        }
+      } catch (trackingError) {
+        console.error(
+          'Error deteniendo GPS:',
+          trackingError
+        );
+      }
     }
   };
 

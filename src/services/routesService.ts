@@ -35,22 +35,51 @@ export async function getRoutes() {
       started_at,
       driver_id,
       created_at,
-      users (
-        id,
-        name
-      ),
       deliveries (
         id
       )
     `)
-    .order('created_at', { ascending: false });
+    .order('date', { ascending: true });
 
   if (error) {
-    console.error('Error cargando recorridos:', error);
+    console.error('Error obteniendo recorridos:', error);
     throw error;
   }
 
-  return data ?? [];
+  const routesData = data ?? [];
+
+  const driverIds = routesData
+    .map((route) => route.driver_id)
+    .filter(Boolean);
+
+  if (driverIds.length === 0) {
+    return routesData.map((route) => ({
+      ...route,
+      driver: null,
+    }));
+  }
+
+  const { data: driversData, error: driversError } =
+    await supabase
+      .from('users')
+      .select('id, name')
+      .in('id', driverIds);
+
+  if (driversError) {
+    console.error(
+      'Error obteniendo choferes:',
+      driversError
+    );
+    throw driversError;
+  }
+
+  return routesData.map((route) => ({
+    ...route,
+    driver:
+      driversData?.find(
+        (driver) => driver.id === route.driver_id
+      ) ?? null,
+  }));
 }
 
 export async function startRoute(routeId: string) {
