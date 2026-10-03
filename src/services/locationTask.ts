@@ -8,12 +8,14 @@ export const LOCATION_TASK_NAME = 'driver-location-task';
 TaskManager.defineTask(
   LOCATION_TASK_NAME,
   async ({ data, error }) => {
+    console.log('🛰️ Tarea GPS ejecutada');
     if (error) {
-      console.error('Error en tarea de ubicación:', error);
+      console.error('❌ Error en tarea GPS:', error);
       return;
     }
 
     if (!data) {
+      console.log('⚠️ La tarea se ejecutó sin datos');
       return;
     }
 
@@ -21,40 +23,42 @@ TaskManager.defineTask(
       locations: Location.LocationObject[];
     };
 
+    console.log('📍 Ubicaciones recibidas:', locations?.length);
+
     const location = locations[0];
 
     if (!location) {
+      console.log('⚠️ No se recibió ninguna ubicación');
       return;
     }
+
+    console.log('📌 Coordenadas recibidas:', location.coords);
 
     const { data: sessionData, error: sessionError } =
       await supabase.auth.getSession();
 
     if (sessionError) {
-      console.error(
-        'Error obteniendo sesión para ubicación:',
-        sessionError
-      );
+      console.error('❌ Error obteniendo sesión:', sessionError);
       return;
     }
 
     const user = sessionData.session?.user;
 
     if (!user) {
-      console.error(
-        'No hay usuario autenticado para guardar ubicación.'
-      );
+      console.log('⚠️ No se encontró un usuario autenticado');
       return;
     }
+
+    console.log('👤 Usuario:', user.id);
 
     const routeId = await AsyncStorage.getItem(
       'active_route_id'
     );
 
+    console.log('🛣️ Recorrido activo:', routeId);
+
     if (!routeId) {
-      console.error(
-        'No hay un recorrido activo para guardar ubicación.'
-      );
+      console.log('⚠️ No se encontró active_route_id');
       return;
     }
 
@@ -69,14 +73,11 @@ TaskManager.defineTask(
       });
 
     if (insertError) {
-      console.error(
-        'Error guardando ubicación:',
-        insertError
-      );
+      console.error('❌ Error guardando ubicación:', insertError);
       return;
     }
 
-    console.log('📍 Ubicación guardada');
+    console.log('✅ 📍 Ubicación guardada correctamente');
     console.log('Latitud:', location.coords.latitude);
     console.log('Longitud:', location.coords.longitude);
     console.log('Precisión:', location.coords.accuracy);

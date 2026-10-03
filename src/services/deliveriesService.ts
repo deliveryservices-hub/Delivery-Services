@@ -1,5 +1,39 @@
 import { supabase } from '@/lib/supabase';
 
+type GeocodedAddress = {
+  latitude: number;
+  longitude: number;
+  formatted_address: string;
+};
+
+async function geocodeAddress(
+  address: string
+): Promise<GeocodedAddress> {
+  const { data, error } = await supabase.functions.invoke(
+    'geocode-address',
+    {
+      body: { address },
+    }
+  );
+
+  if (error) {
+    console.error('Error geocodificando dirección:', error);
+    throw new Error('No se pudo localizar la dirección.');
+  }
+
+  if (
+    !data ||
+    typeof data.latitude !== 'number' ||
+    typeof data.longitude !== 'number'
+  ) {
+    throw new Error(
+      data?.error ?? 'Google no devolvió coordenadas válidas.'
+    );
+  }
+
+  return data as GeocodedAddress;
+}
+
 export async function createDelivery(
   routeId: string,
   claimNumber: string,
@@ -9,6 +43,9 @@ export async function createDelivery(
   address: string,
   stopIndex: number
 ) {
+  const coordinates = await geocodeAddress(address);
+  console.log('Coordenadas obtenidas:', coordinates);
+
   const { data, error } = await supabase
     .from('deliveries')
     .insert({
@@ -18,11 +55,16 @@ export async function createDelivery(
       email,
       phone,
       address,
+      latitude: coordinates.latitude,
+      longitude: coordinates.longitude,
       stop_index: stopIndex,
       status: 'PENDIENTE',
     })
     .select()
     .single();
+
+    console.log('Entrega guardada:', data);
+    console.log('Error de Supabase:', error);
 
   if (error) {
     console.error('Error creando entrega:', error);
@@ -69,6 +111,8 @@ export async function updateDelivery(
   phone: string,
   address: string
 ) {
+  const coordinates = await geocodeAddress(address);
+
   const { data, error } = await supabase
     .from('deliveries')
     .update({
@@ -76,6 +120,8 @@ export async function updateDelivery(
       email,
       phone,
       address,
+      latitude: coordinates.latitude,
+      longitude: coordinates.longitude,
     })
     .eq('id', deliveryId)
     .select()

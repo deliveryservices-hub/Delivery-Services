@@ -1,13 +1,28 @@
+
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function DriverLayout() {
+  const insets = useSafeAreaInsets();
+
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: '#6C3BAA',
+        tabBarActiveTintColor: '#376194',
         tabBarInactiveTintColor: '#777',
+        tabBarStyle: {
+          backgroundColor: '#FFFFFF',
+          borderTopColor: '#E5E7EB',
+          height: 56 + insets.bottom,
+          paddingTop: 6,
+          paddingBottom: Math.max(insets.bottom, 8),
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '600',
+        },
       }}
     >
       <Tabs.Screen
@@ -15,11 +30,7 @@ export default function DriverLayout() {
         options={{
           title: 'Recorridos',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons
-              name="car-outline"
-              size={size}
-              color={color}
-            />
+            <Ionicons name="car-outline" size={size} color={color} />
           ),
         }}
       />
@@ -29,12 +40,15 @@ export default function DriverLayout() {
         options={{
           title: 'Perfil',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons
-              name="person-outline"
-              size={size}
-              color={color}
-            />
+            <Ionicons name="person-outline" size={size} color={color} />
           ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="route/[id]"
+        options={{
+          href: null,
         }}
       />
     </Tabs>

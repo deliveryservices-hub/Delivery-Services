@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
   View,
-  Button, 
   Alert,
   Pressable,
+  Linking,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { supabase } from '@/lib/supabase';
@@ -22,6 +23,7 @@ import {
 import * as Location from 'expo-location';
 import { LOCATION_TASK_NAME } from '@/services/locationTask';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as TaskManager from 'expo-task-manager';
 
 type Route = {
   id: string;
@@ -92,8 +94,12 @@ export default function DriverRouteDetailScreen() {
   }, [id]);
 
   const startLocationTracking = async () => {
+    console.log('Solicitando permiso de ubicación en primer plano');
+
     const { status: foregroundStatus } =
       await Location.requestForegroundPermissionsAsync();
+
+    console.log('Permiso foreground:', foregroundStatus);
 
     if (foregroundStatus !== 'granted') {
       Alert.alert(
@@ -103,8 +109,12 @@ export default function DriverRouteDetailScreen() {
       return false;
     }
 
+    console.log('Solicitando permiso de ubicación en segundo plano');
+
     const { status: backgroundStatus } =
       await Location.requestBackgroundPermissionsAsync();
+
+    console.log('Permiso background:', backgroundStatus);
 
     if (backgroundStatus !== 'granted') {
       Alert.alert(
@@ -114,9 +124,12 @@ export default function DriverRouteDetailScreen() {
       return false;
     }
 
-    const isTracking = await Location.hasStartedLocationUpdatesAsync(
-      LOCATION_TASK_NAME
-    );
+    const isTracking =
+      await Location.hasStartedLocationUpdatesAsync(
+        LOCATION_TASK_NAME
+      );
+
+    console.log('¿GPS ya estaba activo?:', isTracking);
 
     if (!isTracking) {
       await Location.startLocationUpdatesAsync(
@@ -131,6 +144,8 @@ export default function DriverRouteDetailScreen() {
           },
         }
       );
+
+      console.log('Se solicitó iniciar el GPS');
     }
 
     return true;
@@ -140,33 +155,55 @@ export default function DriverRouteDetailScreen() {
     if (!route) return;
 
     try {
-      // Primero verificamos permisos e iniciamos el GPS
+      console.log('Iniciando recorrido:', route.id);
+
+      const wasTracking =
+        await Location.hasStartedLocationUpdatesAsync(
+          LOCATION_TASK_NAME
+        );
+
+      if (wasTracking) {
+        console.log('Deteniendo seguimiento anterior...');
+        await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
+      }
+
+      await AsyncStorage.setItem('active_route_id', route.id);
+      console.log('Recorrido activo guardado en AsyncStorage');
+
       const trackingStarted = await startLocationTracking();
+      console.log('GPS iniciado:', trackingStarted);
+
+
+
+      const isDefined = TaskManager.isTaskDefined(LOCATION_TASK_NAME);
+      const registeredTasks = await TaskManager.getRegisteredTasksAsync();
+
+      console.log('¿GPS iniciado?:', trackingStarted);
+      console.log('¿Tarea definida?:', isDefined);
+      console.log(
+        'Tareas registradas:',
+        registeredTasks.map(task => task.taskName)
+      );
 
       if (!trackingStarted) {
+        await AsyncStorage.removeItem('active_route_id');
         return;
       }
 
-      // Solo si el GPS se inició correctamente guardamos
-      // qué recorrido está activo
-      await AsyncStorage.setItem('active_route_id', route.id);
-
-      // Finalmente iniciamos el recorrido
       await startRoute(route.id);
+      console.log('Recorrido iniciado en Supabase');
 
       await loadData();
     } catch (error) {
       console.error('Error iniciando recorrido:', error);
 
-      // Limpiamos por seguridad si algo falla
       await AsyncStorage.removeItem('active_route_id');
 
-      // Si el GPS llegó a iniciarse antes del error,
-      // también intentamos detenerlo
       try {
-        const isTracking = await Location.hasStartedLocationUpdatesAsync(
-          LOCATION_TASK_NAME
-        );
+        const isTracking =
+          await Location.hasStartedLocationUpdatesAsync(
+            LOCATION_TASK_NAME
+          );
 
         if (isTracking) {
           await Location.stopLocationUpdatesAsync(
@@ -174,10 +211,7 @@ export default function DriverRouteDetailScreen() {
           );
         }
       } catch (trackingError) {
-        console.error(
-          'Error deteniendo GPS:',
-          trackingError
-        );
+        console.error('Error deteniendo GPS:', trackingError);
       }
     }
   };
@@ -297,235 +331,935 @@ export default function DriverRouteDetailScreen() {
         delivery.status === 'NO_ENTREGADO'
     );
 
+  
+  const handleOpenMaps = async (address: string) => {
+    if (!address?.trim()) {
+      Alert.alert('Dirección no disponible', 'No hay una dirección para mostrar.');
+      return;
+    }
+
+    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+
+    try {
+      await Linking.openURL(url);
+    } catch (error) {
+      console.error('Error abriendo Google Maps:', error);
+      Alert.alert('Error', 'No se pudo abrir el mapa.');
+    }
+  };
+
+  const handleCall = async (phone: string | null) => {
+    if (!phone?.trim()) {
+      Alert.alert('Teléfono no disponible', 'No hay un teléfono informado.');
+      return;
+    }
+
+    const cleanPhone = phone.replace(/[^\d+]/g, '');
+
+    try {
+      await Linking.openURL(`tel:${cleanPhone}`);
+    } catch (error) {
+      console.error('Error al abrir el teléfono:', error);
+      Alert.alert('Error', 'No se pudo abrir la aplicación de llamadas.');
+    }
+  };
+  
   return (
     <ScrollView
+      style={styles.screen}
       contentContainerStyle={styles.container}
+      showsVerticalScrollIndicator={false}
     >
-
-      <Pressable
-        style={styles.backButton}
-        onPress={() => router.back()}
-      >
-        <Text style={styles.backButtonText}>
-          ← Mis recorridos
-        </Text>
+      <Pressable style={styles.backButton} onPress={() => router.back()}>
+        <Text style={styles.backButtonText}>‹  Mis recorridos</Text>
       </Pressable>
 
-      <Text style={styles.title}>
-        Detalle del recorrido
-      </Text>
-
-      <View style={styles.card}>
-        <Text style={styles.label}>Fecha</Text>
-        <Text style={styles.value}>
-          {route.date}
-        </Text>
-
-        <Text style={styles.label}>Estado</Text>
-
-        <Text style={styles.value}>
-          {route.status}
-        </Text>
-
-        {route.status === 'PENDIENTE' && (
-          <View style={styles.buttonContainer}>
-            <Button
-              title="Iniciar recorrido"
-              onPress={handleStartRoute}
-            />
-          </View>
-        )}
-
-        <Text style={styles.label}>Entregas</Text>
-        <Text style={styles.value}>
-          {deliveries.length}
-        </Text>
-
-        {route.status === 'EN_CURSO' && allDeliveriesCompleted && (
-            <View style={styles.buttonContainer}>
-              <Button
-                title="Finalizar recorrido"
-                onPress={handleCompleteRoute}
-              />
-            </View>
-          )}
+      <View style={styles.brandHeader}>
+        <View>
+          <Text style={styles.brandDelivery}>DELIVERY</Text>
+          <Text style={styles.brandServices}>SERVICES</Text>
+        </View>
+        <Image
+          source={require('../../../../assets/valija.png')}
+          style={{ width: 56, height: 56, resizeMode: 'contain' }}
+        />
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>
-          Entregas
-        </Text>
+      <Text style={styles.pageTitle}>Detalle del recorrido</Text>
+      <Text style={styles.pageSubtitle}>
+        Consultá las entregas y gestioná tu recorrido.
+      </Text>
 
-        {deliveries.length === 0 ? (
-          <Text style={styles.empty}>
+      <View style={styles.summaryCard}>
+        <View style={styles.summaryHeader}>
+          <View style={styles.summaryTitleGroup}>
+            <Text style={styles.cardEyebrow}>RECORRIDO</Text>
+            <Text style={styles.summaryDate}>
+              {new Date(`${route.date}T12:00:00`).toLocaleDateString(
+                'es-AR',
+                { day: 'numeric', month: 'long', year: 'numeric' }
+              )}
+            </Text>
+          </View>
+
+          <View
+            style={[
+              styles.statusBadge,
+              route.status === 'PENDIENTE' && styles.statusPending,
+              route.status === 'EN_CURSO' && styles.statusInProgress,
+              route.status === 'COMPLETADO' && styles.statusCompleted,
+            ]}
+          >
+            <View
+              style={[
+                styles.statusDot,
+                route.status === 'PENDIENTE' && styles.dotPending,
+                route.status === 'EN_CURSO' && styles.dotInProgress,
+                route.status === 'COMPLETADO' && styles.dotCompleted,
+              ]}
+            />
+            <Text
+              style={[
+                styles.statusText,
+                route.status === 'PENDIENTE' && styles.textPending,
+                route.status === 'EN_CURSO' && styles.textInProgress,
+                route.status === 'COMPLETADO' && styles.textCompleted,
+              ]}
+            >
+              {route.status === 'PENDIENTE'
+                ? 'Pendiente'
+                : route.status === 'EN_CURSO'
+                ? 'En curso'
+                : route.status === 'COMPLETADO'
+                ? 'Completado'
+                : route.status}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.summaryDivider} />
+
+        <View style={styles.summaryStats}>
+          <View style={styles.summaryStat}>
+            <Text style={styles.statNumber}>{deliveries.length}</Text>
+            <Text style={styles.statLabel}>Entregas</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.summaryStat}>
+            <Text style={styles.statNumber}>
+              {deliveries.filter(
+                (delivery) =>
+                  delivery.status === 'ENTREGADO' ||
+                  delivery.status === 'NO_ENTREGADO'
+              ).length}
+            </Text>
+            <Text style={styles.statLabel}>Resueltas</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.summaryStat}>
+            <Text style={styles.statNumber}>
+              {deliveries.filter(
+                (delivery) =>
+                  delivery.status === 'PENDIENTE' ||
+                  delivery.status === 'EN_CAMINO'
+              ).length}
+            </Text>
+            <Text style={styles.statLabel}>Pendientes</Text>
+          </View>
+        </View>
+
+        {route.status === 'PENDIENTE' && (
+          <Pressable
+            style={({ pressed }) => [
+              styles.primaryButton,
+              pressed && styles.buttonPressed,
+            ]}
+            onPress={handleStartRoute}
+          >
+            <Text style={styles.primaryButtonText}>Iniciar recorrido</Text>
+            <Text style={styles.buttonArrow}>→</Text>
+          </Pressable>
+        )}
+
+        {route.status === 'EN_CURSO' && allDeliveriesCompleted && (
+          <Pressable
+            style={({ pressed }) => [
+              styles.primaryButton,
+              pressed && styles.buttonPressed,
+            ]}
+            onPress={handleCompleteRoute}
+          >
+            <Text style={styles.primaryButtonText}>Finalizar recorrido</Text>
+            <Text style={styles.buttonArrow}>✓</Text>
+          </Pressable>
+        )}
+
+        {route.status === 'EN_CURSO' && !allDeliveriesCompleted && (
+          <View style={styles.activeNotice}>
+            <View style={styles.activeNoticeDot} />
+            <Text style={styles.activeNoticeText}>
+              Recorrido activo. Actualizá el estado de cada entrega a medida
+              que avances.
+            </Text>
+          </View>
+        )}
+      </View>
+
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Entregas</Text>
+        <View style={styles.countBadge}>
+          <Text style={styles.countBadgeText}>{deliveries.length}</Text>
+        </View>
+      </View>
+
+      {deliveries.length === 0 ? (
+        <View style={styles.emptyCard}>
+          <View style={styles.emptyIcon}>
+            <Text style={styles.emptyIconText}>▤</Text>
+          </View>
+          <Text style={styles.emptyTitle}>Sin entregas asignadas</Text>
+          <Text style={styles.emptyText}>
             Este recorrido todavía no tiene entregas.
           </Text>
-        ) : (
-          deliveries.map((delivery) => (
+        </View>
+      ) : (
+        deliveries.map((delivery) => {
+          const isNext = nextDelivery?.id === delivery.id;
+          const isActive = delivery.status === 'EN_CAMINO';
+          const isCompleted =
+            delivery.status === 'ENTREGADO' ||
+            delivery.status === 'NO_ENTREGADO';
+
+          return (
             <View
               key={delivery.id}
-              style={styles.deliveryCard}
+              style={[
+                styles.deliveryCard,
+                isNext && route.status === 'EN_CURSO' && styles.nextDeliveryCard,
+                isCompleted && styles.completedDeliveryCard,
+              ]}
             >
-              <Text style={styles.stop}>
-                Parada {delivery.stop_index}
-              </Text>
+              <View style={styles.deliveryHeader}>
+                <View style={styles.stopContainer}>
+                  <View style={[
+                    styles.stopNumber,
+                    isNext && route.status === 'EN_CURSO' && styles.nextStopNumber,
+                  ]}>
+                    <Text style={[
+                      styles.stopNumberText,
+                      isNext && route.status === 'EN_CURSO' && styles.nextStopNumberText,
+                    ]}>
+                      {delivery.stop_index}
+                    </Text>
+                  </View>
+
+                  <Text style={styles.stopLabel}>PARADA</Text>
+                </View>
+
+                <View style={[
+                  styles.statusBadge,
+                  isActive && styles.statusActive,
+                  isCompleted && styles.statusCompleted,
+                ]}>
+                  <Text style={[
+                    styles.statusText,
+                    isActive && styles.statusActiveText,
+                    isCompleted && styles.statusCompletedText,
+                  ]}>
+                    {delivery.status === 'PENDIENTE'
+                      ? 'Pendiente'
+                      : delivery.status === 'EN_CAMINO'
+                      ? 'En curso'
+                      : delivery.status === 'ENTREGADO'
+                      ? 'Entregada'
+                      : 'No entregada'}
+                  </Text>
+                </View>
+              </View>
+
+              {isNext && route.status === 'EN_CURSO' && (
+                <View style={styles.nextNotice}>
+                  <Text style={styles.nextNoticeText}>
+                    {isActive ? 'Entrega en curso' : 'Próxima entrega'}
+                  </Text>
+                </View>
+              )}
 
               <Text style={styles.deliveryName}>
                 {delivery.full_name}
               </Text>
 
-              <Text style={styles.info}>
-                Teléfono: {delivery.phone ?? 'Sin informar'}
+              <Text style={styles.claimText}>
+                Reclamo #{delivery.claim_number}
               </Text>
 
-              <Text style={styles.info}>
-                Dirección: {delivery.address}
-              </Text>
+              <View style={styles.deliveryInfoRow}>
+                <Text style={styles.infoIcon}>⌖</Text>
+                <Text style={styles.infoText}>{delivery.address}</Text>
+              </View>
 
-              <Text style={styles.info}>
-                Estado: {delivery.status}
-              </Text>
+              <View style={styles.deliveryInfoRow}>
+                <Text style={styles.phoneIcon}>☎</Text>
+                <Text style={styles.infoText}>
+                  {delivery.phone ?? 'Sin teléfono informado'}
+                </Text>
+              </View>
 
-              {delivery.status === 'PENDIENTE' &&
-                route.status === 'EN_CURSO' &&
-                nextDelivery?.id === delivery.id && (
-                  <View style={styles.buttonContainer}>
-                    <Button
-                      title="Iniciar entrega"
-                      onPress={() => handleStartDelivery(delivery.id)}
-                    />
-                  </View>
+              <View style={styles.quickActions}>
+                <Pressable
+                  style={styles.mapAction}
+                  onPress={() => handleOpenMaps(delivery.address)}
+                >
+                  <Text style={styles.mapActionText}>
+                    ↗ Abrir en mapa
+                  </Text>
+                </Pressable>
+
+                {delivery.phone && (
+                  <Pressable
+                    style={styles.callAction}
+                    onPress={() => handleCall(delivery.phone)}
+                  >
+                    <Text style={styles.callActionText}>
+                      ☎ Llamar
+                    </Text>
+                  </Pressable>
                 )}
+              </View>
 
-              {delivery.status === 'EN_CAMINO' && (
-                <>
-                  <View style={styles.buttonContainer}>
-                    <Button
-                      title="Marcar como entregada"
-                      onPress={() => handleCompleteDelivery(delivery.id)}
-                    />
-                  </View>
-
-                  <View style={styles.buttonContainer}>
-                    <Button
-                      title="No entregada"
-                      onPress={() => handleFailedDelivery(delivery.id)}
-                    />
-                  </View>
-                </>
-              )}
-
-              {delivery.eta_window_start &&
-                delivery.eta_window_end && (
-                  <Text style={styles.info}>
-                    Horario estimado:{' '}
-                    {new Date(
-                      delivery.eta_window_start
-                    ).toLocaleTimeString([], {
+              {delivery.eta_window_start && delivery.eta_window_end && (
+                <View style={styles.etaBox}>
+                  <Text style={styles.etaLabel}>Horario estimado</Text>
+                  <Text style={styles.etaValue}>
+                    {new Date(delivery.eta_window_start).toLocaleTimeString([], {
                       hour: '2-digit',
                       minute: '2-digit',
                     })}
                     {' - '}
-                    {new Date(
-                      delivery.eta_window_end
-                    ).toLocaleTimeString([], {
+                    {new Date(delivery.eta_window_end).toLocaleTimeString([], {
                       hour: '2-digit',
                       minute: '2-digit',
                     })}
                   </Text>
+                </View>
+              )}
+
+              {delivery.status === 'NO_ENTREGADO' && delivery.failure_reason && (
+                <Text style={styles.failureText}>
+                  Motivo: {delivery.failure_reason}
+                </Text>
+              )}
+
+              {route.status === 'EN_CURSO' &&
+                delivery.status === 'PENDIENTE' &&
+                isNext && (
+                  <Pressable
+                    style={styles.primaryAction}
+                    onPress={() => handleStartDelivery(delivery.id)}
+                  >
+                    <Text style={styles.primaryActionText}>
+                      Iniciar entrega →
+                    </Text>
+                  </Pressable>
                 )}
+
+              {isActive && (
+                <>
+                  <Pressable
+                    style={styles.primaryAction}
+                    onPress={() => handleCompleteDelivery(delivery.id)}
+                  >
+                    <Text style={styles.primaryActionText}>
+                      Marcar como entregada
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={styles.secondaryAction}
+                    onPress={() => handleFailedDelivery(delivery.id)}
+                  >
+                    <Text style={styles.secondaryActionText}>
+                      No se pudo entregar
+                    </Text>
+                  </Pressable>
+                </>
+              )}
             </View>
-          ))
-        )}
-      </View>
+          );
+        })
+      )}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: '#F3F5F8',
+  },
   container: {
-    padding: 20,
-    paddingTop: 70,
+    paddingHorizontal: 20,
+    paddingTop: 55,
     paddingBottom: 40,
   },
-
+  backButton: {
+    marginBottom: 22,
+    alignSelf: 'flex-start',
+    paddingVertical: 5,
+    paddingRight: 10,
+  },
+  backButtonText: {
+    color: '#376194',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  brandHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 23,
+  },
+  brandDelivery: {
+    color: '#EF3038',
+    fontSize: 22,
+    fontWeight: '700',
+    lineHeight: 24,
+    letterSpacing: -0.5,
+  },
+  brandServices: {
+    color: '#376194',
+    fontSize: 22,
+    fontWeight: '700',
+    lineHeight: 24,
+    letterSpacing: -0.5,
+  },
+  pageTitle: {
+    fontSize: 25,
+    fontWeight: '800',
+    color: '#253047',
+    marginBottom: 5,
+  },
+  pageSubtitle: {
+    fontSize: 13,
+    color: '#7D8795',
+    marginBottom: 22,
+  },
+  summaryCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 18,
+    marginBottom: 27,
+    borderWidth: 1,
+    borderColor: '#E8ECF1',
+    shadowColor: '#253047',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  summaryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  summaryTitleGroup: {
+    flex: 1,
+  },
+  cardEyebrow: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#8993A1',
+    letterSpacing: 1.2,
+    marginBottom: 5,
+  },
+  summaryDate: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#253047',
+    textTransform: 'capitalize',
+  },
+  statusPending: {
+    backgroundColor: '#FFF2DB',
+  },
+  statusInProgress: {
+    backgroundColor: '#E8F0FA',
+  },
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  dotPending: {
+    backgroundColor: '#C78B20',
+  },
+  dotInProgress: {
+    backgroundColor: '#376194',
+  },
+  dotCompleted: {
+    backgroundColor: '#20866B',
+  },
+  textPending: {
+    color: '#A66A08',
+  },
+  textInProgress: {
+    color: '#376194',
+  },
+  textCompleted: {
+    color: '#20866B',
+  },
+  summaryDivider: {
+    height: 1,
+    backgroundColor: '#EDF0F3',
+    marginVertical: 17,
+  },
+  summaryStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 18,
+  },
+  summaryStat: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statNumber: {
+    fontSize: 23,
+    fontWeight: '800',
+    color: '#253047',
+  },
+  statLabel: {
+    fontSize: 11,
+    color: '#7D8795',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  statDivider: {
+    width: 1,
+    height: 39,
+    backgroundColor: '#EDF0F3',
+  },
+  primaryButton: {
+    minHeight: 49,
+    borderRadius: 13,
+    backgroundColor: '#EF3038',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 15,
+    gap: 10,
+  },
+  primaryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  buttonArrow: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  buttonPressed: {
+    opacity: 0.78,
+  },
+  activeNotice: {
+    backgroundColor: '#E8F0FA',
+    borderRadius: 12,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+  },
+  activeNoticeDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#376194',
+  },
+  activeNoticeText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#376194',
+    fontWeight: '600',
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    marginBottom: 15,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#253047',
+  },
+  countBadge: {
+    backgroundColor: '#E8F0FA',
+    minWidth: 25,
+    height: 25,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  countBadgeText: {
+    color: '#376194',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  emptyCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 26,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E8ECF1',
+  },
+  emptyIcon: {
+    width: 58,
+    height: 58,
+    borderRadius: 18,
+    backgroundColor: '#E8F0FA',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 15,
+  },
+  emptyIconText: {
+    fontSize: 29,
+    color: '#376194',
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#253047',
+    textAlign: 'center',
+    marginBottom: 7,
+  },
+  emptyText: {
+    fontSize: 13,
+    color: '#7D8795',
+    lineHeight: 19,
+    textAlign: 'center',
+  },
+  deliveryCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 18,
+    padding: 16,
+    marginTop: 12,
+    marginBottom: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  nextDeliveryCard: {
+    borderColor: '#376194',
+    borderWidth: 1.5,
+  },
+  completedDeliveryCard: {
+    opacity: 0.8,
+  },
+  deliveryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  stopContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  stopNumber: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: '#EAF0F8',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  nextStopNumber: {
+    backgroundColor: '#376194',
+  },
+  stopNumberText: {
+    color: '#376194',
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  nextStopNumberText: {
+    color: '#FFFFFF',
+  },
+  stopLabel: {
+    color: '#7B8492',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  statusBadge: {
+    backgroundColor: '#FFF0D5',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+  },
+  statusActive: {
+    backgroundColor: '#E8F1FF',
+  },
+  statusCompleted: {
+    backgroundColor: '#E5F5EA',
+  },
+  statusText: {
+    color: '#98651C',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  statusActiveText: {
+    color: '#376194',
+  },
+  statusCompletedText: {
+    color: '#287A45',
+  },
+  nextNotice: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#EEF4FC',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    marginBottom: 10,
+  },
+  nextNoticeText: {
+    color: '#376194',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  deliveryName: {
+    fontSize: 19,
+    fontWeight: '800',
+    color: '#303746',
+    marginBottom: 3,
+  },
+  claimText: {
+    color: '#7B8492',
+    fontSize: 13,
+    marginBottom: 14,
+  },
+  deliveryInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    gap: 10,
+  },
+  infoIcon: {
+    color: '#376194',
+    fontSize: 20,
+    width: 20,
+    textAlign: 'center',
+  },
+  phoneIcon: {
+    color: '#EF3038',
+    fontSize: 18,
+    width: 20,
+    textAlign: 'center',
+  },
+  infoText: {
+    flex: 1,
+    color: '#596273',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  etaBox: {
+    backgroundColor: '#F3F5F8',
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  etaLabel: {
+    color: '#7B8492',
+    fontSize: 12,
+    marginBottom: 3,
+  },
+  etaValue: {
+    color: '#303746',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  failureText: {
+    color: '#B42318',
+    fontSize: 13,
+    marginTop: 6,
+  },
+  primaryAction: {
+    backgroundColor: '#EF3038',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  primaryActionText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  secondaryAction: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#EF3038',
+    borderRadius: 12,
+    paddingVertical: 13,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    marginTop: 9,
+  },
+  secondaryActionText: {
+    color: '#EF3038',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  deliveryTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  stopCaption: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#8993A1',
+    letterSpacing: 1,
+  },
+  deliveryStatusBadge: {
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  deliveryPending: {
+    backgroundColor: '#FFF2DB',
+  },
+  deliveryOnWay: {
+    backgroundColor: '#E8F0FA',
+  },
+  deliveryDelivered: {
+    backgroundColor: '#E4F5EF',
+  },
+  deliveryFailed: {
+    backgroundColor: '#FCE8E8',
+  },
+  deliveryStatusText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  deliveryPendingText: {
+    color: '#A66A08',
+  },
+  deliveryOnWayText: {
+    color: '#376194',
+  },
+  deliveryDeliveredText: {
+    color: '#20866B',
+  },
+  deliveryFailedText: {
+    color: '#C43B40',
+  },
+  claimNumber: {
+    color: '#8993A1',
+    fontSize: 11,
+    marginBottom: 13,
+  },
+  deliveryInfoGroup: {
+    gap: 10,
+    marginBottom: 15,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 9,
+  },
+  failureNotice: {
+    backgroundColor: '#FCE8E8',
+    borderRadius: 10,
+    padding: 11,
+    marginBottom: 12,
+  },
+  failureLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#C43B40',
+    marginBottom: 3,
+  },
+  deliveryAction: {
+    marginTop: 2,
+  },
+  actionsGroup: {
+    gap: 9,
+  },
+  secondaryButton: {
+    minHeight: 46,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: '#F0C6C8',
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 15,
+  },
+  secondaryButtonText: {
+    color: '#C43B40',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  finalNotice: {
+    backgroundColor: '#E4F5EF',
+    borderRadius: 10,
+    padding: 11,
+  },
+  finalNoticeText: {
+    color: '#20866B',
+    fontSize: 12,
+    fontWeight: '800',
+  },
   center: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#F3F5F8',
   },
-
-  title: {
-    fontSize: 26,
-    fontWeight: 'bold',
-    marginBottom: 20,
-  },
-
-  card: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-  },
-
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
+  quickActions: {
+    flexDirection: 'row',
+    gap: 10,
     marginTop: 8,
-  },
-
-  value: {
-    fontSize: 17,
-    marginTop: 3,
-  },
-
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 10,
-  },
-
-  empty: {
-    color: '#777',
-  },
-
-  deliveryCard: {
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    borderRadius: 10,
-    padding: 14,
-    marginTop: 10,
-  },
-
-  stop: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-
-  deliveryName: {
-    fontSize: 18,
-    fontWeight: 'bold',
     marginBottom: 8,
   },
-
-  info: {
-    fontSize: 14,
-    marginBottom: 5,
+  mapAction: {
+    flex: 1,
+    backgroundColor: '#376194',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-
-  buttonContainer: {
-    marginTop: 12,
+  mapActionText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
   },
-
-  backButton: {
-    marginBottom: 16,
+  callAction: {
+    flex: 1,
+    backgroundColor: '#FFF0F0',
+    borderWidth: 1,
+    borderColor: '#F8C9CB',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-
-  backButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
+  callActionText: {
+    color: '#D92730',
+    fontSize: 13,
+    fontWeight: '700',
   },
 });
