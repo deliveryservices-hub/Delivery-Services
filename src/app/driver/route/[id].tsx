@@ -46,6 +46,8 @@ type Delivery = {
   eta_window_start: string | null;
   eta_window_end: string | null;
   last_updated_at: string | null;
+  latitude: number | null;
+  longitude: number | null;
 };
 
 export default function DriverRouteDetailScreen() {
@@ -92,6 +94,309 @@ export default function DriverRouteDetailScreen() {
       setLoading(false);
     }
   }, [id]);
+
+  const calculateRouteTimes = async (
+    origin: {
+      latitude: number;
+      longitude: number;
+    },
+    pendingDeliveries: Delivery[]
+  ) => {
+    const deliveriesWithCoordinates = pendingDeliveries.filter(
+      (delivery) =>
+        typeof delivery.latitude === 'number' &&
+        typeof delivery.longitude === 'number'
+    );
+
+    if (deliveriesWithCoordinates.length === 0) {
+      return [];
+    }
+
+    const destinations = deliveriesWithCoordinates
+      .slice(0, 5)
+      .map((delivery) => ({
+        latitude: delivery.latitude!,
+        longitude: delivery.longitude!,
+      }));
+
+    const { data, error } = await supabase.functions.invoke(
+      'calculate-route-times',
+      {
+        body: {
+          origin,
+          destinations,
+        },
+      }
+    );
+
+    if (error) {
+      console.error(
+        'Error calculando tiempos de ruta:',
+        error
+      );
+      throw error;
+    }
+
+    return data?.segments ?? [];
+  };
+
+  const getCurrentDriverLocation = async () => {
+    const location = await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.High,
+    });
+
+    return {
+      latitude: location.coords.latitude,
+      longitude: location.coords.longitude,
+    };
+  };
+
+  const calculateAccumulatedETAs = (
+    segments: {
+      segmentIndex: number;
+      durationSeconds: number;
+      distanceMeters: number;
+    }[],
+    startTime: Date,
+    serviceTimeMinutes = 8
+  ) => {
+    let accumulatedMinutes = 0;
+
+    return segments.map((segment) => {
+      const travelMinutes = segment.durationSeconds / 60;
+
+      accumulatedMinutes += travelMinutes;
+      accumulatedMinutes += serviceTimeMinutes;
+
+      const eta = new Date(startTime);
+      eta.setMinutes(
+        eta.getMinutes() + accumulatedMinutes
+      );
+
+      return {
+        segmentIndex: segment.segmentIndex,
+        eta,
+        travelMinutes,
+        distanceMeters: segment.distanceMeters,
+      };
+    });
+  };
+
+  const buildDeliveryETAs = (
+    deliveries: Delivery[],
+    accumulatedETAs: {
+      segmentIndex: number;
+      eta: Date;
+      travelMinutes: number;
+      distanceMeters: number;
+    }[]
+  ) => {
+    return deliveries
+      .slice(0, accumulatedETAs.length)
+      .map((delivery, index) => ({
+        deliveryId: delivery.id,
+        eta: accumulatedETAs[index].eta,
+        distanceMeters:
+          accumulatedETAs[index].distanceMeters,
+        travelMinutes:
+          accumulatedETAs[index].travelMinutes,
+      }));
+  };
+
+  const calculateInitialRouteETAs = async (
+    origin: {
+      latitude: number;
+      longitude: number;
+    },
+    pendingDeliveries: Delivery[]
+  ) => {
+    const deliveriesWithCoordinates = pendingDeliveries.filter(
+      (delivery) =>
+        typeof delivery.latitude === 'number' &&
+        typeof delivery.longitude === 'number'
+    );
+
+    if (deliveriesWithCoordinates.length === 0) {
+      return [];
+    }
+
+    const startTime = new Date();
+
+    let currentOrigin = origin;
+    let accumulatedMinutes = 0;
+
+    const results: {
+      deliveryId: string;
+      eta: Date;
+      distanceMeters: number;
+      travelMinutes: number;
+    }[] = [];
+
+    for (
+      let startIndex = 0;
+      startIndex < deliveriesWithCoordinates.length;
+      startIndex += 5
+    ) {
+      const chunk = deliveriesWithCoordinates.slice(
+        startIndex,
+        startIndex + 5
+      );
+
+      const segments = await calculateRouteTimes(
+        currentOrigin,
+        chunk
+      );
+
+      for (let i = 0; i < segments.length; i++) {
+        const segment = segments[i];
+        const delivery = chunk[i];
+
+        const travelMinutes =
+          segment.durationSeconds / 60;
+
+        accumulatedMinutes += travelMinutes;
+        accumulatedMinutes += 8;
+
+        const eta = new Date(startTime);
+
+        eta.setMinutes(
+          eta.getMinutes() + accumulatedMinutes
+        );
+
+        results.push({
+          deliveryId: delivery.id,
+          eta,
+          distanceMeters: segment.distanceMeters,
+          travelMinutes,
+        });
+      }
+
+      const lastDelivery =
+        chunk[chunk.length - 1];
+
+      currentOrigin = {
+        latitude: lastDelivery.latitude!,
+        longitude: lastDelivery.longitude!,
+      };
+    }
+
+    return results;
+  };
+
+  const saveInitialRouteETAs = async (
+    origin: {
+      latitude: number;
+      longitude: number;
+    },
+    pendingDeliveries: Delivery[]
+  ) => {
+    const routeETAs = await calculateInitialRouteETAs(
+      origin,
+      pendingDeliveries
+    );
+
+    for (const deliveryETA of routeETAs) {
+      await saveDeliveryETA(
+        deliveryETA.deliveryId,
+        deliveryETA.eta
+      );
+    }
+
+    return routeETAs;
+  };
+
+  const recalculateNextFiveETAs = async () => {
+    if (!route) return;
+
+    const currentLocation =
+      await getCurrentDriverLocation();
+
+    const freshDeliveries =
+      await getDeliveriesByRoute(route.id);
+
+    const pendingDeliveries = freshDeliveries
+      .filter(
+        (delivery) =>
+          delivery.status === 'PENDIENTE' &&
+          typeof delivery.latitude === 'number' &&
+          typeof delivery.longitude === 'number'
+      )
+      .sort(
+        (a, b) =>
+          a.stop_index - b.stop_index
+      )
+      .slice(0, 5);
+
+    if (pendingDeliveries.length === 0) {
+      console.log(
+        'No hay entregas pendientes para recalcular.'
+      );
+      return;
+    }
+
+    console.log(
+      'Recalculando ETA de próximas:',
+      pendingDeliveries.length
+    );
+
+    const segments = await calculateRouteTimes(
+      currentLocation,
+      pendingDeliveries
+    );
+
+    const accumulatedETAs =
+      calculateAccumulatedETAs(
+        segments,
+        new Date(),
+        8
+      );
+
+    const deliveryETAs =
+      buildDeliveryETAs(
+        pendingDeliveries,
+        accumulatedETAs
+      );
+
+    for (const deliveryETA of deliveryETAs) {
+      await saveDeliveryETA(
+        deliveryETA.deliveryId,
+        deliveryETA.eta
+      );
+    }
+
+    console.log(
+      'ETAs recalculados:',
+      deliveryETAs.length
+    );
+  };
+
+  const saveDeliveryETA = async (
+    deliveryId: string,
+    eta: Date
+  ) => {
+    const etaWindowStart = new Date(eta);
+
+    const etaWindowEnd = new Date(eta);
+    etaWindowEnd.setHours(
+      etaWindowEnd.getHours() + 2
+    );
+
+    const { error } = await supabase
+      .from('deliveries')
+      .update({
+        eta_window_start: etaWindowStart.toISOString(),
+        eta_window_end: etaWindowEnd.toISOString(),
+      })
+      .eq('id', deliveryId);
+
+    if (error) {
+      console.error(
+        'Error guardando ETA:',
+        error
+      );
+      throw error;
+    }
+  };
 
   const startLocationTracking = async () => {
     console.log('Solicitando permiso de ubicación en primer plano');
@@ -164,40 +469,111 @@ export default function DriverRouteDetailScreen() {
 
       if (wasTracking) {
         console.log('Deteniendo seguimiento anterior...');
-        await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
+        await Location.stopLocationUpdatesAsync(
+          LOCATION_TASK_NAME
+        );
       }
 
-      await AsyncStorage.setItem('active_route_id', route.id);
-      console.log('Recorrido activo guardado en AsyncStorage');
+      await AsyncStorage.setItem(
+        'active_route_id',
+        route.id
+      );
 
-      const trackingStarted = await startLocationTracking();
+      console.log(
+        'Recorrido activo guardado en AsyncStorage'
+      );
+
+      const trackingStarted =
+        await startLocationTracking();
+
       console.log('GPS iniciado:', trackingStarted);
 
+      const isDefined =
+        TaskManager.isTaskDefined(
+          LOCATION_TASK_NAME
+        );
 
+      const registeredTasks =
+        await TaskManager.getRegisteredTasksAsync();
 
-      const isDefined = TaskManager.isTaskDefined(LOCATION_TASK_NAME);
-      const registeredTasks = await TaskManager.getRegisteredTasksAsync();
+      console.log(
+        '¿GPS iniciado?:',
+        trackingStarted
+      );
 
-      console.log('¿GPS iniciado?:', trackingStarted);
-      console.log('¿Tarea definida?:', isDefined);
+      console.log(
+        '¿Tarea definida?:',
+        isDefined
+      );
+
       console.log(
         'Tareas registradas:',
-        registeredTasks.map(task => task.taskName)
+        registeredTasks.map(
+          (task) => task.taskName
+        )
       );
 
       if (!trackingStarted) {
-        await AsyncStorage.removeItem('active_route_id');
+        await AsyncStorage.removeItem(
+          'active_route_id'
+        );
         return;
       }
 
+      // 📍 Obtener ubicación actual del chofer
+      const currentLocation =
+        await getCurrentDriverLocation();
+
+      console.log(
+        'Ubicación para calcular ETA:',
+        currentLocation
+      );
+
+      // 📦 Entregas pendientes ordenadas por recorrido
+      const pendingDeliveries = deliveries
+        .filter(
+          (delivery) =>
+            delivery.status === 'PENDIENTE'
+        )
+        .sort(
+          (a, b) =>
+            a.stop_index - b.stop_index
+        );
+
+      console.log(
+        'Entregas pendientes:',
+        pendingDeliveries.length
+      );
+
+      // 🕐 Calcular ETA inicial de toda la ruta
+      const initialETAs =
+        await saveInitialRouteETAs(
+          currentLocation,
+          pendingDeliveries
+        );
+
+      console.log(
+        'ETAs iniciales guardados:',
+        initialETAs.length
+      );
+
+      // 🚚 Iniciar recorrido en Supabase
       await startRoute(route.id);
-      console.log('Recorrido iniciado en Supabase');
+
+      console.log(
+        'Recorrido iniciado en Supabase'
+      );
 
       await loadData();
     } catch (error) {
-      console.error('Error iniciando recorrido:', error);
+      console.error(
+        'Error iniciando recorrido:',
+        error
+      );
 
-      await AsyncStorage.removeItem('active_route_id');
+      await AsyncStorage.removeItem(
+        'active_route_id'
+      );
 
       try {
         const isTracking =
@@ -211,8 +587,16 @@ export default function DriverRouteDetailScreen() {
           );
         }
       } catch (trackingError) {
-        console.error('Error deteniendo GPS:', trackingError);
+        console.error(
+          'Error deteniendo GPS:',
+          trackingError
+        );
       }
+
+      Alert.alert(
+        'Error',
+        'No se pudo iniciar el recorrido.'
+      );
     }
   };
 
@@ -225,16 +609,65 @@ export default function DriverRouteDetailScreen() {
     }
   };
 
-  const handleCompleteDelivery = async (deliveryId: string) => {
+  const handleCompleteDelivery = async (
+    deliveryId: string
+  ) => {
     try {
-      await updateDeliveryStatus(deliveryId, 'ENTREGADO');
+      await updateDeliveryStatus(
+        deliveryId,
+        'ENTREGADO'
+      );
+
+      try {
+        await recalculateNextFiveETAs();
+      } catch (error) {
+        console.error(
+          'Error recalculando ETA después de entregar:',
+          error
+        );
+      }
+
       await loadData();
     } catch (error) {
-      console.error('Error marcando entrega como completada:', error);
+      console.error(
+        'Error marcando entrega como completada:',
+        error
+      );
     }
   };
 
-  const handleFailedDelivery = (deliveryId: string) => {
+  const processFailedDelivery = async (
+    deliveryId: string,
+    reason: string
+  ) => {
+    try {
+      await updateDeliveryStatus(
+        deliveryId,
+        'NO_ENTREGADO',
+        reason
+      );
+
+      try {
+        await recalculateNextFiveETAs();
+      } catch (error) {
+        console.error(
+          'Error recalculando ETA después de entrega no realizada:',
+          error
+        );
+      }
+
+      await loadData();
+    } catch (error) {
+      console.error(
+        'Error marcando entrega como no realizada:',
+        error
+      );
+    }
+  };
+
+  const handleFailedDelivery = (
+    deliveryId: string
+  ) => {
     Alert.alert(
       'Entrega no realizada',
       'Seleccioná el motivo:',
@@ -242,30 +675,30 @@ export default function DriverRouteDetailScreen() {
         {
           text: 'Destinatario ausente',
           onPress: () =>
-            updateDeliveryStatus(
+            processFailedDelivery(
               deliveryId,
-              'NO_ENTREGADO',
               'Destinatario ausente'
-            ).then(loadData),
+            ),
         },
+
         {
           text: 'Dirección incorrecta',
           onPress: () =>
-            updateDeliveryStatus(
+            processFailedDelivery(
               deliveryId,
-              'NO_ENTREGADO',
               'Dirección incorrecta'
-            ).then(loadData),
+            ),
         },
+
         {
           text: 'Rechazó la entrega',
           onPress: () =>
-            updateDeliveryStatus(
+            processFailedDelivery(
               deliveryId,
-              'NO_ENTREGADO',
               'Rechazó la entrega'
-            ).then(loadData),
+            ),
         },
+
         {
           text: 'Cancelar',
           style: 'cancel',
@@ -373,17 +806,6 @@ export default function DriverRouteDetailScreen() {
       <Pressable style={styles.backButton} onPress={() => router.back()}>
         <Text style={styles.backButtonText}>‹  Mis recorridos</Text>
       </Pressable>
-
-      <View style={styles.brandHeader}>
-        <View>
-          <Text style={styles.brandDelivery}>DELIVERY</Text>
-          <Text style={styles.brandServices}>SERVICES</Text>
-        </View>
-        <Image
-          source={require('../../../../assets/valija.png')}
-          style={{ width: 56, height: 56, resizeMode: 'contain' }}
-        />
-      </View>
 
       <Text style={styles.pageTitle}>Detalle del recorrido</Text>
       <Text style={styles.pageSubtitle}>
@@ -712,26 +1134,6 @@ const styles = StyleSheet.create({
     color: '#376194',
     fontSize: 15,
     fontWeight: '700',
-  },
-  brandHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 23,
-  },
-  brandDelivery: {
-    color: '#EF3038',
-    fontSize: 22,
-    fontWeight: '700',
-    lineHeight: 24,
-    letterSpacing: -0.5,
-  },
-  brandServices: {
-    color: '#376194',
-    fontSize: 22,
-    fontWeight: '700',
-    lineHeight: 24,
-    letterSpacing: -0.5,
   },
   pageTitle: {
     fontSize: 25,

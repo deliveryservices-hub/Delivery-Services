@@ -91,7 +91,9 @@ export async function getDeliveriesByRoute(
       stop_index,
       eta_window_start,
       eta_window_end,
-      last_updated_at
+      last_updated_at,
+      latitude,
+      longitude
     `)
     .eq('route_id', routeId)
     .order('stop_index', { ascending: true });
