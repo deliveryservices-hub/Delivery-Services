@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -55,6 +55,9 @@ export default function DriverRouteDetailScreen() {
   const [route, setRoute] = useState<Route | null>(null);
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [loading, setLoading] = useState(true);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const deliveryPositions =
+    useRef<Record<string, number>>({});
 
   const loadData = useCallback(async () => {
     if (!id) return;
@@ -94,6 +97,41 @@ export default function DriverRouteDetailScreen() {
       setLoading(false);
     }
   }, [id]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const nextDelivery = deliveries.find(
+    (delivery) =>
+      delivery.status === 'PENDIENTE' ||
+      delivery.status === 'EN_CAMINO'
+  );
+
+  useEffect(() => {
+    if (
+      route?.status !== 'EN_CURSO' ||
+      !nextDelivery
+    ) {
+      return;
+    }
+
+    const position =
+      deliveryPositions.current[nextDelivery.id];
+
+    if (position === undefined) {
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      scrollViewRef.current?.scrollTo({
+        y: Math.max(position - 20, 0),
+        animated: true,
+      });
+    }, 150);
+
+    return () => clearTimeout(timeout);
+  }, [nextDelivery?.id, route?.status]);
 
   const calculateRouteTimes = async (
     origin: {
@@ -441,8 +479,8 @@ export default function DriverRouteDetailScreen() {
         LOCATION_TASK_NAME,
         {
           accuracy: Location.Accuracy.High,
-          timeInterval: 30000,
-          distanceInterval: 50,
+          timeInterval: 60000,
+          distanceInterval: 100,
           foregroundService: {
             notificationTitle: 'Recorrido en curso',
             notificationBody: 'La ubicación se está actualizando.',
@@ -730,10 +768,6 @@ export default function DriverRouteDetailScreen() {
     }
   };
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
   if (loading) {
     return (
       <View style={styles.center}>
@@ -750,12 +784,6 @@ export default function DriverRouteDetailScreen() {
     );
   }
 
-  const nextDelivery = deliveries.find(
-    (delivery) =>
-      delivery.status === 'PENDIENTE' ||
-      delivery.status === 'EN_CAMINO'
-  );
-
   const allDeliveriesCompleted =
     deliveries.length > 0 &&
     deliveries.every(
@@ -764,7 +792,6 @@ export default function DriverRouteDetailScreen() {
         delivery.status === 'NO_ENTREGADO'
     );
 
-  
   const handleOpenMaps = async (address: string) => {
     if (!address?.trim()) {
       Alert.alert('Dirección no disponible', 'No hay una dirección para mostrar.');
@@ -802,12 +829,21 @@ export default function DriverRouteDetailScreen() {
       style={styles.screen}
       contentContainerStyle={styles.container}
       showsVerticalScrollIndicator={false}
+      ref={scrollViewRef}
     >
-      <Pressable style={styles.backButton} onPress={() => router.back()}>
-        <Text style={styles.backButtonText}>‹  Mis recorridos</Text>
+      <Pressable
+        style={styles.backButton}
+        onPress={() => router.back()}
+      >
+        <Text style={styles.backButtonText}>
+          ‹  Mis recorridos
+        </Text>
       </Pressable>
 
-      <Text style={styles.pageTitle}>Detalle del recorrido</Text>
+      <Text style={styles.pageTitle}>
+        Detalle del recorrido
+      </Text>
+
       <Text style={styles.pageSubtitle}>
         Consultá las entregas y gestioná tu recorrido.
       </Text>
@@ -815,11 +851,18 @@ export default function DriverRouteDetailScreen() {
       <View style={styles.summaryCard}>
         <View style={styles.summaryHeader}>
           <View style={styles.summaryTitleGroup}>
-            <Text style={styles.cardEyebrow}>RECORRIDO</Text>
+            <Text style={styles.cardEyebrow}>
+              RECORRIDO
+            </Text>
+
             <Text style={styles.summaryDate}>
               {new Date(`${route.date}T12:00:00`).toLocaleDateString(
                 'es-AR',
-                { day: 'numeric', month: 'long', year: 'numeric' }
+                {
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric',
+                }
               )}
             </Text>
           </View>
@@ -827,25 +870,35 @@ export default function DriverRouteDetailScreen() {
           <View
             style={[
               styles.statusBadge,
-              route.status === 'PENDIENTE' && styles.statusPending,
-              route.status === 'EN_CURSO' && styles.statusInProgress,
-              route.status === 'COMPLETADO' && styles.statusCompleted,
+              route.status === 'PENDIENTE' &&
+                styles.statusPending,
+              route.status === 'EN_CURSO' &&
+                styles.statusInProgress,
+              route.status === 'COMPLETADO' &&
+                styles.statusCompleted,
             ]}
           >
             <View
               style={[
                 styles.statusDot,
-                route.status === 'PENDIENTE' && styles.dotPending,
-                route.status === 'EN_CURSO' && styles.dotInProgress,
-                route.status === 'COMPLETADO' && styles.dotCompleted,
+                route.status === 'PENDIENTE' &&
+                  styles.dotPending,
+                route.status === 'EN_CURSO' &&
+                  styles.dotInProgress,
+                route.status === 'COMPLETADO' &&
+                  styles.dotCompleted,
               ]}
             />
+
             <Text
               style={[
                 styles.statusText,
-                route.status === 'PENDIENTE' && styles.textPending,
-                route.status === 'EN_CURSO' && styles.textInProgress,
-                route.status === 'COMPLETADO' && styles.textCompleted,
+                route.status === 'PENDIENTE' &&
+                  styles.textPending,
+                route.status === 'EN_CURSO' &&
+                  styles.textInProgress,
+                route.status === 'COMPLETADO' &&
+                  styles.textCompleted,
               ]}
             >
               {route.status === 'PENDIENTE'
@@ -863,10 +916,17 @@ export default function DriverRouteDetailScreen() {
 
         <View style={styles.summaryStats}>
           <View style={styles.summaryStat}>
-            <Text style={styles.statNumber}>{deliveries.length}</Text>
-            <Text style={styles.statLabel}>Entregas</Text>
+            <Text style={styles.statNumber}>
+              {deliveries.length}
+            </Text>
+
+            <Text style={styles.statLabel}>
+              Entregas
+            </Text>
           </View>
+
           <View style={styles.statDivider} />
+
           <View style={styles.summaryStat}>
             <Text style={styles.statNumber}>
               {deliveries.filter(
@@ -875,9 +935,14 @@ export default function DriverRouteDetailScreen() {
                   delivery.status === 'NO_ENTREGADO'
               ).length}
             </Text>
-            <Text style={styles.statLabel}>Resueltas</Text>
+
+            <Text style={styles.statLabel}>
+              Resueltas
+            </Text>
           </View>
+
           <View style={styles.statDivider} />
+
           <View style={styles.summaryStat}>
             <Text style={styles.statNumber}>
               {deliveries.filter(
@@ -886,7 +951,10 @@ export default function DriverRouteDetailScreen() {
                   delivery.status === 'EN_CAMINO'
               ).length}
             </Text>
-            <Text style={styles.statLabel}>Pendientes</Text>
+
+            <Text style={styles.statLabel}>
+              Pendientes
+            </Text>
           </View>
         </View>
 
@@ -898,56 +966,84 @@ export default function DriverRouteDetailScreen() {
             ]}
             onPress={handleStartRoute}
           >
-            <Text style={styles.primaryButtonText}>Iniciar recorrido</Text>
-            <Text style={styles.buttonArrow}>→</Text>
-          </Pressable>
-        )}
-
-        {route.status === 'EN_CURSO' && allDeliveriesCompleted && (
-          <Pressable
-            style={({ pressed }) => [
-              styles.primaryButton,
-              pressed && styles.buttonPressed,
-            ]}
-            onPress={handleCompleteRoute}
-          >
-            <Text style={styles.primaryButtonText}>Finalizar recorrido</Text>
-            <Text style={styles.buttonArrow}>✓</Text>
-          </Pressable>
-        )}
-
-        {route.status === 'EN_CURSO' && !allDeliveriesCompleted && (
-          <View style={styles.activeNotice}>
-            <View style={styles.activeNoticeDot} />
-            <Text style={styles.activeNoticeText}>
-              Recorrido activo. Actualizá el estado de cada entrega a medida
-              que avances.
+            <Text style={styles.primaryButtonText}>
+              Iniciar recorrido
             </Text>
-          </View>
+
+            <Text style={styles.buttonArrow}>
+              →
+            </Text>
+          </Pressable>
         )}
+
+        {route.status === 'EN_CURSO' &&
+          allDeliveriesCompleted && (
+            <Pressable
+              style={({ pressed }) => [
+                styles.primaryButton,
+                pressed && styles.buttonPressed,
+              ]}
+              onPress={handleCompleteRoute}
+            >
+              <Text style={styles.primaryButtonText}>
+                Finalizar recorrido
+              </Text>
+
+              <Text style={styles.buttonArrow}>
+                ✓
+              </Text>
+            </Pressable>
+          )}
+
+        {route.status === 'EN_CURSO' &&
+          !allDeliveriesCompleted && (
+            <View style={styles.activeNotice}>
+              <View style={styles.activeNoticeDot} />
+
+              <Text style={styles.activeNoticeText}>
+                Recorrido activo. Actualizá el estado de cada
+                entrega a medida que avances.
+              </Text>
+            </View>
+          )}
       </View>
 
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Entregas</Text>
+        <Text style={styles.sectionTitle}>
+          Entregas
+        </Text>
+
         <View style={styles.countBadge}>
-          <Text style={styles.countBadgeText}>{deliveries.length}</Text>
+          <Text style={styles.countBadgeText}>
+            {deliveries.length}
+          </Text>
         </View>
       </View>
 
       {deliveries.length === 0 ? (
         <View style={styles.emptyCard}>
           <View style={styles.emptyIcon}>
-            <Text style={styles.emptyIconText}>▤</Text>
+            <Text style={styles.emptyIconText}>
+              ▤
+            </Text>
           </View>
-          <Text style={styles.emptyTitle}>Sin entregas asignadas</Text>
+
+          <Text style={styles.emptyTitle}>
+            Sin entregas asignadas
+          </Text>
+
           <Text style={styles.emptyText}>
             Este recorrido todavía no tiene entregas.
           </Text>
         </View>
       ) : (
         deliveries.map((delivery) => {
-          const isNext = nextDelivery?.id === delivery.id;
-          const isActive = delivery.status === 'EN_CAMINO';
+          const isNext =
+            nextDelivery?.id === delivery.id;
+
+          const isActive =
+            delivery.status === 'EN_CAMINO';
+
           const isCompleted =
             delivery.status === 'ENTREGADO' ||
             delivery.status === 'NO_ENTREGADO';
@@ -957,153 +1053,287 @@ export default function DriverRouteDetailScreen() {
               key={delivery.id}
               style={[
                 styles.deliveryCard,
-                isNext && route.status === 'EN_CURSO' && styles.nextDeliveryCard,
-                isCompleted && styles.completedDeliveryCard,
+                isNext &&
+                  route.status === 'EN_CURSO' &&
+                  styles.nextDeliveryCard,
+                isCompleted &&
+                  styles.completedDeliveryCard,
               ]}
+              onLayout={(event) => {
+                deliveryPositions.current[delivery.id] =
+                  event.nativeEvent.layout.y;
+              }}
             >
-              <View style={styles.deliveryHeader}>
-                <View style={styles.stopContainer}>
-                  <View style={[
-                    styles.stopNumber,
-                    isNext && route.status === 'EN_CURSO' && styles.nextStopNumber,
-                  ]}>
-                    <Text style={[
-                      styles.stopNumberText,
-                      isNext && route.status === 'EN_CURSO' && styles.nextStopNumberText,
-                    ]}>
+              {isCompleted ? (
+                <View style={styles.completedRow}>
+                  <View
+                    style={styles.completedStopNumber}
+                  >
+                    <Text
+                      style={
+                        styles.completedStopNumberText
+                      }
+                    >
                       {delivery.stop_index}
                     </Text>
                   </View>
 
-                  <Text style={styles.stopLabel}>PARADA</Text>
-                </View>
-
-                <View style={[
-                  styles.statusBadge,
-                  isActive && styles.statusActive,
-                  isCompleted && styles.statusCompleted,
-                ]}>
-                  <Text style={[
-                    styles.statusText,
-                    isActive && styles.statusActiveText,
-                    isCompleted && styles.statusCompletedText,
-                  ]}>
-                    {delivery.status === 'PENDIENTE'
-                      ? 'Pendiente'
-                      : delivery.status === 'EN_CAMINO'
-                      ? 'En curso'
-                      : delivery.status === 'ENTREGADO'
-                      ? 'Entregada'
-                      : 'No entregada'}
-                  </Text>
-                </View>
-              </View>
-
-              {isNext && route.status === 'EN_CURSO' && (
-                <View style={styles.nextNotice}>
-                  <Text style={styles.nextNoticeText}>
-                    {isActive ? 'Entrega en curso' : 'Próxima entrega'}
-                  </Text>
-                </View>
-              )}
-
-              <Text style={styles.deliveryName}>
-                {delivery.full_name}
-              </Text>
-
-              <Text style={styles.claimText}>
-                Reclamo #{delivery.claim_number}
-              </Text>
-
-              <View style={styles.deliveryInfoRow}>
-                <Text style={styles.infoIcon}>⌖</Text>
-                <Text style={styles.infoText}>{delivery.address}</Text>
-              </View>
-
-              <View style={styles.deliveryInfoRow}>
-                <Text style={styles.phoneIcon}>☎</Text>
-                <Text style={styles.infoText}>
-                  {delivery.phone ?? 'Sin teléfono informado'}
-                </Text>
-              </View>
-
-              <View style={styles.quickActions}>
-                <Pressable
-                  style={styles.mapAction}
-                  onPress={() => handleOpenMaps(delivery.address)}
-                >
-                  <Text style={styles.mapActionText}>
-                    ↗ Abrir en mapa
-                  </Text>
-                </Pressable>
-
-                {delivery.phone && (
-                  <Pressable
-                    style={styles.callAction}
-                    onPress={() => handleCall(delivery.phone)}
+                  <Text
+                    style={styles.completedName}
+                    numberOfLines={1}
                   >
-                    <Text style={styles.callActionText}>
-                      ☎ Llamar
-                    </Text>
-                  </Pressable>
-                )}
-              </View>
-
-              {delivery.eta_window_start && delivery.eta_window_end && (
-                <View style={styles.etaBox}>
-                  <Text style={styles.etaLabel}>Horario estimado</Text>
-                  <Text style={styles.etaValue}>
-                    {new Date(delivery.eta_window_start).toLocaleTimeString([], {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                    {' - '}
-                    {new Date(delivery.eta_window_end).toLocaleTimeString([], {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
+                    {delivery.full_name}
                   </Text>
+
+                  <Text
+                    style={[
+                      styles.completedStatus,
+                      delivery.status === 'ENTREGADO'
+                        ? styles.completedStatusDelivered
+                        : styles.completedStatusFailed,
+                    ]}
+                  >
+                    {delivery.status === 'ENTREGADO'
+                      ? '✓ Entregada'
+                      : '✕ No entregada'}
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.deliveryHeader}>
+                  <View style={styles.stopContainer}>
+                    <View
+                      style={[
+                        styles.stopNumber,
+                        isNext &&
+                          route.status === 'EN_CURSO' &&
+                          styles.nextStopNumber,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.stopNumberText,
+                          isNext &&
+                            route.status === 'EN_CURSO' &&
+                            styles.nextStopNumberText,
+                        ]}
+                      >
+                        {delivery.stop_index}
+                      </Text>
+                    </View>
+
+                    <Text style={styles.stopLabel}>
+                      PARADA
+                    </Text>
+                  </View>
+
+                  <View
+                    style={[
+                      styles.statusBadge,
+                      isActive && styles.statusActive,
+                      isCompleted &&
+                        styles.statusCompleted,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.statusText,
+                        isActive &&
+                          styles.statusActiveText,
+                        isCompleted &&
+                          styles.statusCompletedText,
+                      ]}
+                    >
+                      {delivery.status === 'PENDIENTE'
+                        ? 'Pendiente'
+                        : delivery.status === 'EN_CAMINO'
+                        ? 'En curso'
+                        : delivery.status === 'ENTREGADO'
+                        ? 'Entregada'
+                        : 'No entregada'}
+                    </Text>
+                  </View>
                 </View>
               )}
 
-              {delivery.status === 'NO_ENTREGADO' && delivery.failure_reason && (
-                <Text style={styles.failureText}>
-                  Motivo: {delivery.failure_reason}
-                </Text>
-              )}
-
-              {route.status === 'EN_CURSO' &&
-                delivery.status === 'PENDIENTE' &&
-                isNext && (
-                  <Pressable
-                    style={styles.primaryAction}
-                    onPress={() => handleStartDelivery(delivery.id)}
-                  >
-                    <Text style={styles.primaryActionText}>
-                      Iniciar entrega →
+              {!isCompleted &&
+                isNext &&
+                route.status === 'EN_CURSO' && (
+                  <View style={styles.nextNotice}>
+                    <Text style={styles.nextNoticeText}>
+                      {isActive
+                        ? 'Entrega en curso'
+                        : 'Próxima entrega'}
                     </Text>
-                  </Pressable>
+                  </View>
                 )}
 
-              {isActive && (
+              {!isCompleted && (
                 <>
-                  <Pressable
-                    style={styles.primaryAction}
-                    onPress={() => handleCompleteDelivery(delivery.id)}
-                  >
-                    <Text style={styles.primaryActionText}>
-                      Marcar como entregada
-                    </Text>
-                  </Pressable>
+                  <Text style={styles.deliveryName}>
+                    {delivery.full_name}
+                  </Text>
 
-                  <Pressable
-                    style={styles.secondaryAction}
-                    onPress={() => handleFailedDelivery(delivery.id)}
-                  >
-                    <Text style={styles.secondaryActionText}>
-                      No se pudo entregar
+                  <Text style={styles.claimText}>
+                    Reclamo #{delivery.claim_number}
+                  </Text>
+
+                  <View style={styles.deliveryInfoRow}>
+                    <Text style={styles.infoIcon}>
+                      ⌖
                     </Text>
-                  </Pressable>
+
+                    <Text style={styles.infoText}>
+                      {delivery.address}
+                    </Text>
+                  </View>
+
+                  <View style={styles.deliveryInfoRow}>
+                    <Text style={styles.phoneIcon}>
+                      ☎
+                    </Text>
+
+                    <Text style={styles.infoText}>
+                      {delivery.phone ??
+                        'Sin teléfono informado'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.quickActions}>
+                    <Pressable
+                      style={styles.mapAction}
+                      onPress={() =>
+                        handleOpenMaps(
+                          delivery.address
+                        )
+                      }
+                    >
+                      <Text
+                        style={styles.mapActionText}
+                      >
+                        ↗ Abrir en mapa
+                      </Text>
+                    </Pressable>
+
+                    {delivery.phone && (
+                      <Pressable
+                        style={styles.callAction}
+                        onPress={() =>
+                          handleCall(
+                            delivery.phone
+                          )
+                        }
+                      >
+                        <Text
+                          style={
+                            styles.callActionText
+                          }
+                        >
+                          ☎ Llamar
+                        </Text>
+                      </Pressable>
+                    )}
+                  </View>
+
+                  {delivery.eta_window_start && (
+                      <View style={styles.etaBox}>
+                        <Text
+                          style={styles.etaLabel}
+                        >
+                          Horario estimado
+                        </Text>
+
+                        <Text
+                          style={styles.etaValue}
+                        >
+                          {new Date(
+                            delivery.eta_window_start
+                          ).toLocaleTimeString(
+                            [],
+                            {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            }
+                          )}
+                        </Text>
+                      </View>
+                    )}
+
+                  {delivery.status ===
+                    'NO_ENTREGADO' &&
+                    delivery.failure_reason && (
+                      <Text
+                        style={styles.failureText}
+                      >
+                        Motivo:{' '}
+                        {delivery.failure_reason}
+                      </Text>
+                    )}
+
+                  {route.status === 'EN_CURSO' &&
+                    delivery.status ===
+                      'PENDIENTE' &&
+                    isNext && (
+                      <Pressable
+                        style={
+                          styles.primaryAction
+                        }
+                        onPress={() =>
+                          handleStartDelivery(
+                            delivery.id
+                          )
+                        }
+                      >
+                        <Text
+                          style={
+                            styles.primaryActionText
+                          }
+                        >
+                          Iniciar entrega →
+                        </Text>
+                      </Pressable>
+                    )}
+
+                  {isActive && (
+                    <>
+                      <Pressable
+                        style={
+                          styles.primaryAction
+                        }
+                        onPress={() =>
+                          handleCompleteDelivery(
+                            delivery.id
+                          )
+                        }
+                      >
+                        <Text
+                          style={
+                            styles.primaryActionText
+                          }
+                        >
+                          Marcar como entregada
+                        </Text>
+                      </Pressable>
+
+                      <Pressable
+                        style={
+                          styles.secondaryAction
+                        }
+                        onPress={() =>
+                          handleFailedDelivery(
+                            delivery.id
+                          )
+                        }
+                      >
+                        <Text
+                          style={
+                            styles.secondaryActionText
+                          }
+                        >
+                          No se pudo entregar
+                        </Text>
+                      </Pressable>
+                    </>
+                  )}
                 </>
               )}
             </View>
@@ -1364,6 +1594,41 @@ const styles = StyleSheet.create({
   },
   completedDeliveryCard: {
     opacity: 0.8,
+    paddingVertical: 10,
+  },
+  completedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  completedStopNumber: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    backgroundColor: '#E8F0FA',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  completedStopNumberText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#376194',
+  },
+  completedName: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#253047',
+  },
+  completedStatus: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  completedStatusDelivered: {
+    color: '#2E8B57',
+  },
+  completedStatusFailed: {
+    color: '#D64545',
   },
   deliveryHeader: {
     flexDirection: 'row',

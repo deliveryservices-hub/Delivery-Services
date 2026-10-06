@@ -179,7 +179,6 @@ export default function DriverHomeScreen() {
         <Text style={styles.subtitle}>
           ¿Listo para comenzar tu jornada?
         </Text>
-        <Button title="Probar geocodificación" onPress={testGeocoding} />
       </View>
 
       <View style={styles.summaryCard}>

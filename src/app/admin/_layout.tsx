@@ -1,9 +1,11 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function AdminLayout() {
   const { profile } = useAuth();
+  const insets = useSafeAreaInsets();
 
   const canDrive = profile?.role === 'ADMIN';
 
@@ -11,14 +13,29 @@ export default function AdminLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: '#6C3BAA',
+
+        tabBarActiveTintColor: '#376194',
         tabBarInactiveTintColor: '#777',
+
+        tabBarStyle: {
+          backgroundColor: '#FFFFFF',
+          borderTopColor: '#E5E7EB',
+          height: 56 + insets.bottom,
+          paddingTop: 6,
+          paddingBottom: Math.max(insets.bottom, 8),
+        },
+
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '600',
+        },
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
           title: 'Inicio',
+
           tabBarIcon: ({ color, size }) => (
             <Ionicons
               name="home-outline"
@@ -33,7 +50,9 @@ export default function AdminLayout() {
         name="driver"
         options={{
           title: 'Recorridos',
+
           href: canDrive ? undefined : null,
+
           tabBarIcon: ({ color, size }) => (
             <Ionicons
               name="car-outline"
@@ -48,6 +67,7 @@ export default function AdminLayout() {
         name="deliveries"
         options={{
           title: 'Entregas',
+
           tabBarIcon: ({ color, size }) => (
             <Ionicons
               name="cube-outline"
@@ -69,6 +89,20 @@ export default function AdminLayout() {
               color={color}
             />
           ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="route/[id]"
+        options={{
+          href: null,
+        }}
+      />
+
+      <Tabs.Screen
+        name="driver/route/[id]"
+        options={{
+          href: null,
         }}
       />
     </Tabs>

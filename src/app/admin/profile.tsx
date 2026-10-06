@@ -1,145 +1,461 @@
-
 import { useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
+  ViewStyle,
 } from 'react-native';
-import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 
 const PRIMARY = '#376194';
+const RED = '#EF3038';
 
 export default function ProfileScreen() {
   const { profile, signOut } = useAuth();
-  const [loading, setLoading] = useState(false);
+
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  const [driverName, setDriverName] = useState('');
+  const [driverEmail, setDriverEmail] = useState('');
+  const [driverPassword, setDriverPassword] = useState('');
+  const [creatingDriver, setCreatingDriver] = useState(false);
+  const [showDriverPassword, setShowDriverPassword] = useState(false);
 
   const handleSignOut = async () => {
-    if (loading) return;
-
-    setLoading(true);
     try {
+      setLoggingOut(true);
       await signOut();
-      router.replace('/login');
+    } catch (error) {
+      console.error('Error cerrando sesión:', error);
+
+      Alert.alert(
+        'Error',
+        'No se pudo cerrar la sesión.'
+      );
     } finally {
-      setLoading(false);
+      setLoggingOut(false);
     }
   };
 
-  const initial = profile?.name?.charAt(0).toUpperCase() ?? 'A';
+  const handleCreateDriver = async () => {
+    const name = driverName.trim();
+    const email = driverEmail.trim().toLowerCase();
+
+    if (!name || !email || !driverPassword) {
+      Alert.alert(
+        'Falta información',
+        'Completá nombre, email y contraseña.'
+      );
+      return;
+    }
+
+    if (driverPassword.length < 6) {
+      Alert.alert(
+        'Contraseña inválida',
+        'La contraseña debe tener al menos 6 caracteres.'
+      );
+      return;
+    }
+
+    try {
+      setCreatingDriver(true);
+
+      const { data, error } = await supabase.functions.invoke(
+        'create-driver',
+        {
+          body: {
+            name,
+            email,
+            password: driverPassword,
+          },
+        }
+      );
+
+      if (error) {
+        console.error('Error creando chofer:', error);
+
+        Alert.alert(
+          'Error',
+          error.message || 'No se pudo crear el chofer.'
+        );
+
+        return;
+      }
+
+      if (!data?.success) {
+        Alert.alert(
+          'Error',
+          data?.error || 'No se pudo crear el chofer.'
+        );
+
+        return;
+      }
+
+      Alert.alert(
+        'Chofer creado',
+        `Se creó correctamente el usuario ${name}.`
+      );
+
+      setDriverName('');
+      setDriverEmail('');
+      setDriverPassword('');
+    } catch (error) {
+      console.error('Error inesperado:', error);
+
+      Alert.alert(
+        'Error',
+        'Ocurrió un error al crear el chofer.'
+      );
+    } finally {
+      setCreatingDriver(false);
+    }
+  };
+
+  if (!profile) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.center}>
+          <ActivityIndicator
+            size="large"
+            color={PRIMARY}
+          />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <ScrollView
-        contentContainerStyle={styles.container}
-        showsVerticalScrollIndicator={false}
+    <SafeAreaView style={styles.safeArea}>
+      <KeyboardAvoidingView
+        style={styles.keyboardContainer}
+        behavior={
+          Platform.OS === 'ios'
+            ? 'padding'
+            : undefined
+        }
       >
-        <View style={styles.topBar}>
-          <Pressable
-            style={styles.backButton}
-            onPress={() => router.back()}
-            hitSlop={10}
-          >
-            <Ionicons name="arrow-back" size={21} color={PRIMARY} />
-          </Pressable>
+        <ScrollView
+          contentContainerStyle={styles.container}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Header */}
+          <View style={styles.header}>
+            <View>
+              <Text style={styles.title}>
+                Mi perfil
+              </Text>
 
-          <Text style={styles.screenTitle}>Mi perfil</Text>
-          <View style={styles.topBarSpacer} />
-        </View>
-
-        <View style={styles.profileHeader}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{initial}</Text>
-          </View>
-
-          <Text style={styles.name}>
-            {profile?.name ?? 'Administrador'}
-          </Text>
-
-          <View style={styles.roleBadge}>
-            <Ionicons name="shield-checkmark" size={14} color={PRIMARY} />
-            <Text style={styles.roleText}>Administrador</Text>
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Información personal</Text>
-
-          <View style={styles.card}>
-            <View style={styles.infoRow}>
-              <View style={styles.infoIcon}>
-                <Ionicons name="person-outline" size={20} color={PRIMARY} />
-              </View>
-
-              <View style={styles.infoContent}>
-                <Text style={styles.label}>Nombre completo</Text>
-                <Text style={styles.value}>
-                  {profile?.name ?? 'Sin informar'}
-                </Text>
-              </View>
+              <Text style={styles.subtitle}>
+                Administrá tu información y acceso
+              </Text>
             </View>
 
-            <View style={styles.divider} />
+            <View style={styles.headerIcon}>
+              <Ionicons
+                name="person-outline"
+                size={26}
+                color={PRIMARY}
+              />
+            </View>
+          </View>
 
-            <View style={styles.infoRow}>
-              <View style={styles.infoIcon}>
-                <Ionicons name="mail-outline" size={20} color={PRIMARY} />
-              </View>
-
-              <View style={styles.infoContent}>
-                <Text style={styles.label}>Correo electrónico</Text>
-                <Text style={styles.value}>
-                  {profile?.email ?? 'Sin informar'}
-                </Text>
-              </View>
+          {/* Perfil principal */}
+          <View style={styles.profileCard}>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>
+                {profile.name?.charAt(0)?.toUpperCase() ?? 'U'}
+              </Text>
             </View>
 
-            <View style={styles.divider} />
+            <View style={styles.profileInfo}>
+              <Text style={styles.profileName}>
+                {profile.name ?? 'Usuario'}
+              </Text>
 
-            <View style={styles.infoRow}>
-              <View style={styles.infoIcon}>
+              <Text style={styles.profileEmail}>
+                {profile.email}
+              </Text>
+
+              <View style={styles.roleBadge}>
                 <Ionicons
-                  name="briefcase-outline"
-                  size={20}
+                  name="shield-checkmark-outline"
+                  size={14}
                   color={PRIMARY}
                 />
-              </View>
 
-              <View style={styles.infoContent}>
-                <Text style={styles.label}>Rol</Text>
-                <Text style={styles.value}>Administrador</Text>
+                <Text style={styles.roleText}>
+                  {profile.role === 'ADMIN'
+                    ? 'Administrador'
+                    : 'Chofer'}
+                </Text>
               </View>
             </View>
           </View>
-        </View>
 
-        <Pressable
-          style={({ pressed }) => [
-            styles.logoutButton,
-            pressed && styles.logoutPressed,
-            loading && styles.logoutDisabled,
-          ]}
-          onPress={handleSignOut}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="#D64545" />
-          ) : (
-            <>
-              <Ionicons name="log-out-outline" size={20} color="#D64545" />
-              <Text style={styles.logoutText}>Cerrar sesión</Text>
-            </>
+          {/* Información personal */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>
+              Información personal
+            </Text>
+
+            <View style={styles.infoCard}>
+              <View style={styles.infoRow}>
+                <View style={styles.infoIcon}>
+                  <Ionicons
+                    name="person-outline"
+                    size={20}
+                    color={PRIMARY}
+                  />
+                </View>
+
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoLabel}>
+                    Nombre
+                  </Text>
+
+                  <Text style={styles.infoValue}>
+                    {profile.name ?? 'Sin informar'}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.divider} />
+
+              <View style={styles.infoRow}>
+                <View style={styles.infoIcon}>
+                  <Ionicons
+                    name="mail-outline"
+                    size={20}
+                    color={PRIMARY}
+                  />
+                </View>
+
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoLabel}>
+                    Email
+                  </Text>
+
+                  <Text style={styles.infoValue}>
+                    {profile.email}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.divider} />
+
+              <View style={styles.infoRow}>
+                <View style={styles.infoIcon}>
+                  <Ionicons
+                    name="shield-checkmark-outline"
+                    size={20}
+                    color={PRIMARY}
+                  />
+                </View>
+
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoLabel}>
+                    Rol
+                  </Text>
+
+                  <Text style={styles.infoValue}>
+                    {profile.role === 'ADMIN'
+                      ? 'Administrador'
+                      : 'Chofer'}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+
+          {/* Crear chofer */}
+          {profile.role === 'ADMIN' && (
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <View>
+                  <Text style={styles.sectionTitle}>
+                    Crear chofer
+                  </Text>
+
+                  <Text style={styles.sectionDescription}>
+                    Creá un nuevo usuario con acceso a la aplicación.
+                  </Text>
+                </View>
+
+                <View style={styles.sectionIcon}>
+                  <Ionicons
+                    name="person-add-outline"
+                    size={22}
+                    color={PRIMARY}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.formCard}>
+                {/* Nombre */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>
+                    Nombre completo
+                  </Text>
+
+                  <View style={styles.inputWrapper}>
+                    <Ionicons
+                      name="person-outline"
+                      size={20}
+                      color="#777"
+                    />
+
+                    <TextInput
+                      value={driverName}
+                      onChangeText={setDriverName}
+                      placeholder="Ej. Juan Pérez"
+                      placeholderTextColor="#999"
+                      style={styles.input}
+                      autoCapitalize="words"
+                      editable={!creatingDriver}
+                    />
+                  </View>
+                </View>
+
+                {/* Email */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>
+                    Email
+                  </Text>
+
+                  <View style={styles.inputWrapper}>
+                    <Ionicons
+                      name="mail-outline"
+                      size={20}
+                      color="#777"
+                    />
+
+                    <TextInput
+                      value={driverEmail}
+                      onChangeText={setDriverEmail}
+                      placeholder="Ej. juan@email.com"
+                      placeholderTextColor="#999"
+                      style={styles.input}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      editable={!creatingDriver}
+                    />
+                  </View>
+                </View>
+
+                {/* Contraseña */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Contraseña</Text>
+                  <View style={styles.inputWrapper}>
+                    <Ionicons
+                      name="lock-closed-outline"
+                      size={20}
+                      color="#8995A3"
+                    />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Contraseña"
+                      placeholderTextColor="#A0A8B2"
+                      value={driverPassword}
+                      onChangeText={setDriverPassword}
+                      secureTextEntry={!showDriverPassword}
+                      autoCapitalize="none"
+                      textContentType="password"
+                    />
+                    <Pressable
+                      onPress={() => setShowDriverPassword((prev) => !prev)}
+                      hitSlop={10}
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        showDriverPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'
+                      }
+                    >
+                      <Ionicons
+                        name={showDriverPassword ? 'eye-off-outline' : 'eye-outline'}
+                        size={21}
+                        color="#8995A3"
+                      />
+                    </Pressable>
+                  </View>
+                </View>
+
+                {/* Botón */}
+                <Pressable
+                  style={[
+                    styles.createButton,
+                    creatingDriver &&
+                      styles.createButtonDisabled,
+                  ]}
+                  onPress={handleCreateDriver}
+                  disabled={creatingDriver}
+                >
+                  {creatingDriver ? (
+                    <ActivityIndicator
+                      size="small"
+                      color="#FFFFFF"
+                    />
+                  ) : (
+                    <>
+                      <Ionicons
+                        name="person-add-outline"
+                        size={20}
+                        color="#FFFFFF"
+                      />
+
+                      <Text style={styles.createButtonText}>
+                        Crear chofer
+                      </Text>
+                    </>
+                  )}
+                </Pressable>
+              </View>
+            </View>
           )}
-        </Pressable>
 
-        <Text style={styles.footer}>Delivery Services</Text>
-      </ScrollView>
+          {/* Cerrar sesión */}
+          <View style={styles.logoutSection}>
+            <Pressable
+              style={[
+                styles.logoutButton,
+                loggingOut &&
+                  styles.logoutButtonDisabled,
+              ]}
+              onPress={handleSignOut}
+              disabled={loggingOut}
+            >
+              {loggingOut ? (
+                <ActivityIndicator
+                  size="small"
+                  color={RED}
+                />
+              ) : (
+                <>
+                  <Ionicons
+                    name="log-out-outline"
+                    size={21}
+                    color={RED}
+                  />
+
+                  <Text style={styles.logoutText}>
+                    Cerrar sesión
+                  </Text>
+                </>
+              )}
+            </Pressable>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -147,160 +463,298 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F4F6FA',
+    backgroundColor: '#F5F7FA',
   },
+
+  keyboardContainer: {
+    flex: 1,
+  },
+
   container: {
-    flexGrow: 1,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 30,
+    padding: 20,
+    paddingBottom: 80,
   },
-  topBar: {
+
+  center: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 22,
+  },
+
+  title: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#1F2937',
+  },
+
+  subtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 4,
+  },
+
+  headerIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#EAF0F7',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  profileCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 20,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 30,
+    marginBottom: 26,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: {
+      width: 0,
+      height: 3,
+    },
+    elevation: 2,
   },
-  backButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 13,
-    backgroundColor: '#E8EEF6',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  screenTitle: {
-    fontSize: 19,
-    fontWeight: '700',
-    color: '#1D2939',
-  },
-  topBarSpacer: {
-    width: 42,
-  },
-  profileHeader: {
-    alignItems: 'center',
-    marginBottom: 32,
-  },
+
   avatar: {
-    width: 94,
-    height: 94,
-    borderRadius: 47,
-    backgroundColor: '#E1EAF5',
-    borderWidth: 3,
-    borderColor: '#FFFFFF',
-    alignItems: 'center',
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: PRIMARY,
     justifyContent: 'center',
-    marginBottom: 14,
-    elevation: 3,
+    alignItems: 'center',
+    marginRight: 16,
   },
+
   avatarText: {
-    fontSize: 36,
-    fontWeight: '700',
-    color: PRIMARY,
+    fontSize: 25,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
-  name: {
-    fontSize: 23,
-    fontWeight: '700',
-    color: '#1D2939',
-    textAlign: 'center',
-    marginBottom: 9,
+
+  profileInfo: {
+    flex: 1,
   },
+
+  profileName: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+
+  profileEmail: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 3,
+  },
+
   roleBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#E8EEF6',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    alignSelf: 'flex-start',
+    backgroundColor: '#EAF0F7',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 20,
+    marginTop: 9,
+    gap: 5,
   },
+
   roleText: {
-    color: PRIMARY,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  section: {
-    marginBottom: 25,
-  },
-  sectionTitle: {
-    fontSize: 16,
+    fontSize: 12,
     fontWeight: '700',
-    color: '#344054',
+    color: PRIMARY,
+  },
+
+  section: {
+    marginBottom: 26,
+  },
+
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 12,
   },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    paddingHorizontal: 16,
-    paddingVertical: 4,
-    borderWidth: 1,
-    borderColor: '#E9EDF3',
-    elevation: 2,
-    shadowColor: '#101828',
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
+
+  sectionTitle: {
+    fontSize: 19,
+    fontWeight: '700',
+    color: '#1F2937',
   },
+
+  sectionDescription: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginTop: 4,
+    maxWidth: 280,
+  },
+
+  sectionIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#EAF0F7',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  infoCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+  },
+
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 15,
-    gap: 13,
+    paddingVertical: 14,
   },
+
   infoIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    backgroundColor: '#F0F4F9',
-    alignItems: 'center',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#EAF0F7',
     justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 13,
   },
+
   infoContent: {
     flex: 1,
-    gap: 4,
   },
-  label: {
+
+  infoLabel: {
     fontSize: 12,
-    color: '#667085',
-    fontWeight: '500',
+    color: '#6B7280',
+    marginBottom: 3,
   },
-  value: {
+
+  infoValue: {
     fontSize: 15,
-    color: '#1D2939',
     fontWeight: '600',
+    color: '#1F2937',
   },
+
   divider: {
     height: 1,
-    backgroundColor: '#EEF0F4',
+    backgroundColor: '#E5E7EB',
   },
-  logoutButton: {
+
+  formCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 18,
+  },
+
+  inputGroup: {
+    marginBottom: 16,
+  },
+
+  inputLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#374151',
+    marginBottom: 7,
+  },
+
+  inputWrapper: {
     minHeight: 52,
+    borderWidth: 1,
+    borderColor: '#D9DEE5',
+    borderRadius: 12,
+    backgroundColor: '#FAFBFC',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 9,
-    backgroundColor: '#FFF5F5',
-    borderWidth: 1,
-    borderColor: '#F5D0D0',
-    borderRadius: 14,
+    paddingHorizontal: 14,
   },
-  logoutPressed: {
+
+  input: {
+    flex: 1,
+    fontSize: 15,
+    color: '#1F2937',
+    marginLeft: 10,
+    paddingVertical: 10,
+  },
+
+  passwordContainer: {
+    position: 'relative',
+    justifyContent: 'center',
+  },
+
+  passwordInput: {
+    height: 50,
+    paddingHorizontal: 14,
+    paddingRight: 48,
+    fontSize: 15,
+    color: '#111827',
+  },
+
+  passwordToggle: {
+    position: 'absolute',
+    right: 14,
+    height: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  createButton: {
+    minHeight: 52,
+    borderRadius: 12,
+    backgroundColor: PRIMARY,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 9,
+    marginTop: 4,
+  },
+
+  createButtonDisabled: {
     opacity: 0.7,
   },
-  logoutDisabled: {
-    opacity: 0.6,
-  },
-  logoutText: {
+
+  createButtonText: {
+    color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
-    color: '#D64545',
   },
-  footer: {
-    marginTop: 'auto',
-    paddingTop: 28,
-    textAlign: 'center',
-    color: '#98A2B3',
-    fontSize: 12,
-    fontWeight: '500',
+
+  logoutSection: {
+    marginTop: 4,
+    marginBottom: 20,
+  },
+
+  logoutButton: {
+    minHeight: 52,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#F1B7BA',
+    backgroundColor: '#FFF7F7',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+  },
+
+  logoutButtonDisabled: {
+    opacity: 0.6,
+  },
+
+  logoutText: {
+    color: RED,
+    fontSize: 15,
+    fontWeight: '700',
   },
 });
