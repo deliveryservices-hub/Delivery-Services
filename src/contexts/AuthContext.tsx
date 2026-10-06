@@ -111,7 +111,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
   };
 
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
+    console.log('🔴 AuthContext - entrando a signOut');
+
+    const { error } = await supabase.auth.signOut({
+      scope: 'local',
+    });
+
+    console.log('🟢 AuthContext - terminó supabase.auth.signOut');
 
     if (error) {
       console.error('Error al cerrar sesión:', error.message);
@@ -120,6 +126,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     setUser(null);
     setProfile(null);
+
+    console.log('✅ AuthContext - user y profile limpiados');
   };
 
   return (

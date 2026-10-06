@@ -480,7 +480,7 @@ export default function DriverRouteDetailScreen() {
         {
           accuracy: Location.Accuracy.High,
           timeInterval: 60000,
-          distanceInterval: 100,
+          distanceInterval: 0,
           foregroundService: {
             notificationTitle: 'Recorrido en curso',
             notificationBody: 'La ubicación se está actualizando.',
@@ -492,6 +492,16 @@ export default function DriverRouteDetailScreen() {
     }
 
     return true;
+  };
+
+  const isRouteToday = (routeDate: string) => {
+    const today = new Date();
+
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+
+    return routeDate === `${year}-${month}-${day}`;
   };
 
   const handleStartRoute = async () => {
@@ -960,13 +970,17 @@ export default function DriverRouteDetailScreen() {
 
         {route.status === 'PENDIENTE' && (
           <Pressable
-            style={({ pressed }) => [
+            style={[
               styles.primaryButton,
-              pressed && styles.buttonPressed,
+              !isRouteToday(route.date) && styles.startButtonDisabled,
             ]}
-            onPress={handleStartRoute}
+            onPress={() => handleStartRoute}
+            disabled={!isRouteToday(route.date)}
           >
-            <Text style={styles.primaryButtonText}>
+            <Text style={[
+              styles.primaryButtonText,
+              !isRouteToday(route.date) && styles.startButtonTextDisabled,
+            ]}>
               Iniciar recorrido
             </Text>
 
@@ -1928,5 +1942,11 @@ const styles = StyleSheet.create({
     color: '#D92730',
     fontSize: 13,
     fontWeight: '700',
+  },
+  startButtonDisabled: {
+    backgroundColor: '#D1D5DB',
+  },
+  startButtonTextDisabled: {
+    color: '#6B7280',
   },
 });

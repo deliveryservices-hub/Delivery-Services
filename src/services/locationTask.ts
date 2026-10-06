@@ -25,7 +25,7 @@ TaskManager.defineTask(
 
     console.log('📍 Ubicaciones recibidas:', locations?.length);
 
-    const location = locations[0];
+    const location = locations[locations.length - 1];
 
     if (!location) {
       console.log('⚠️ No se recibió ninguna ubicación');

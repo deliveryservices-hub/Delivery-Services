@@ -128,7 +128,7 @@ export default function CreateDeliveryForm({
       } else {
         await createDelivery(
           routeId,
-          claimNumber.trim(),
+          claimNumber.toUpperCase().trim(),
           name.trim(),
           email.trim(),
           phone.trim(),
@@ -230,7 +230,7 @@ export default function CreateDeliveryForm({
               styles.input,
               isEditing && styles.disabledInput,
             ]}
-            placeholder="Ej. ABC123456"
+            placeholder="Ej. EZELA12345"
             placeholderTextColor="#A0A8B4"
             autoCapitalize="characters"
             autoCorrect={false}

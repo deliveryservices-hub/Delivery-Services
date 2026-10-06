@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { useRouter } from 'expo-router';
 
 const PRIMARY = '#376194';
 const RED = '#EF3038';
@@ -23,7 +24,13 @@ const RED = '#EF3038';
 export default function ProfileScreen() {
   const { profile, signOut } = useAuth();
 
+  const router = useRouter();
+
   const [loggingOut, setLoggingOut] = useState(false);
+
+  const [drivers, setDrivers] = useState<any[]>([]);
+  const [loadingDrivers, setLoadingDrivers] = useState(false);
+  const [showDriverForm, setShowDriverForm] = useState(false);
 
   const [driverName, setDriverName] = useState('');
   const [driverEmail, setDriverEmail] = useState('');
@@ -34,7 +41,10 @@ export default function ProfileScreen() {
   const handleSignOut = async () => {
     try {
       setLoggingOut(true);
+
       await signOut();
+
+      router.replace('/login');
     } catch (error) {
       console.error('Error cerrando sesión:', error);
 
@@ -46,6 +56,46 @@ export default function ProfileScreen() {
       setLoggingOut(false);
     }
   };
+
+  const loadDrivers = async () => {
+    try {
+      setLoadingDrivers(true);
+
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, name, email')
+        .eq('role', 'CHOFER')
+        .order('name', { ascending: true });
+
+      if (error) {
+        console.error('Error cargando choferes:', error);
+
+        Alert.alert(
+          'Error',
+          'No se pudieron cargar los choferes.'
+        );
+
+        return;
+      }
+
+      setDrivers(data ?? []);
+    } catch (error) {
+      console.error('Error inesperado cargando choferes:', error);
+
+      Alert.alert(
+        'Error',
+        'Ocurrió un error al cargar los choferes.'
+      );
+    } finally {
+      setLoadingDrivers(false);
+    }
+  };
+
+  useEffect(() => {
+    if (profile?.role === 'ADMIN') {
+      loadDrivers();
+    }
+  }, [profile?.role]);
 
   const handleCreateDriver = async () => {
     const name = driverName.trim();
@@ -109,6 +159,9 @@ export default function ProfileScreen() {
       setDriverName('');
       setDriverEmail('');
       setDriverPassword('');
+
+      setShowDriverForm(false);
+      await loadDrivers();
     } catch (error) {
       console.error('Error inesperado:', error);
 
@@ -278,149 +331,264 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          {/* Crear chofer */}
+          {/* Gestión de choferes */}
           {profile.role === 'ADMIN' && (
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <View>
-                  <Text style={styles.sectionTitle}>
-                    Crear chofer
-                  </Text>
+            <>
+              {/* Lista de choferes */}
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <View>
+                    <Text style={styles.sectionTitle}>
+                      Choferes
+                    </Text>
 
-                  <Text style={styles.sectionDescription}>
-                    Creá un nuevo usuario con acceso a la aplicación.
-                  </Text>
+                    <Text style={styles.sectionDescription}>
+                      Usuarios con acceso como chofer.
+                    </Text>
+                  </View>
+
+                  <View style={styles.sectionIcon}>
+                    <Ionicons
+                      name="people-outline"
+                      size={22}
+                      color={PRIMARY}
+                    />
+                  </View>
                 </View>
 
-                <View style={styles.sectionIcon}>
+                <View style={styles.driversCard}>
+                  {loadingDrivers ? (
+                    <View style={styles.loadingDrivers}>
+                      <ActivityIndicator
+                        size="small"
+                        color={PRIMARY}
+                      />
+
+                      <Text style={styles.loadingDriversText}>
+                        Cargando choferes...
+                      </Text>
+                    </View>
+                  ) : drivers.length === 0 ? (
+                    <View style={styles.emptyDrivers}>
+                      <View style={styles.emptyDriversIcon}>
+                        <Ionicons
+                          name="people-outline"
+                          size={22}
+                          color="#8A96A3"
+                        />
+                      </View>
+
+                      <Text style={styles.emptyDriversTitle}>
+                        No hay choferes registrados
+                      </Text>
+
+                      <Text style={styles.emptyDriversText}>
+                        Creá el primer chofer usando el formulario.
+                      </Text>
+                    </View>
+                  ) : (
+                    drivers.map((driver, index) => {
+                      const driverName = driver.name || 'Sin nombre';
+                      const initial =
+                        driverName.trim().charAt(0).toUpperCase() || 'C';
+
+                      return (
+                        <View
+                          key={driver.id}
+                          style={[
+                            styles.driverRow,
+                            index < drivers.length - 1 &&
+                              styles.driverRowBorder,
+                          ]}
+                        >
+                          <View style={styles.driverAvatar}>
+                            <Text style={styles.driverAvatarText}>
+                              {initial}
+                            </Text>
+                          </View>
+
+                          <View style={styles.driverInfo}>
+                            <Text style={styles.driverName}>
+                              {driverName}
+                            </Text>
+
+                            <Text style={styles.driverEmail}>
+                              {driver.email || 'Sin email'}
+                            </Text>
+                          </View>
+
+                          <View style={styles.driverRole}>
+                            <Ionicons
+                              name="car-outline"
+                              size={15}
+                              color={PRIMARY}
+                            />
+                          </View>
+                        </View>
+                      );
+                    })
+                  )}
+                </View>
+              </View>
+
+              {/* Botón mostrar / ocultar formulario */}
+              <View style={styles.section}>
+                <Pressable
+                  style={styles.toggleFormButton}
+                  onPress={() =>
+                    setShowDriverForm((prev) => !prev)
+                  }
+                >
                   <Ionicons
-                    name="person-add-outline"
-                    size={22}
+                    name={
+                      showDriverForm
+                        ? 'chevron-up-outline'
+                        : 'person-add-outline'
+                    }
+                    size={20}
                     color={PRIMARY}
                   />
-                </View>
-              </View>
 
-              <View style={styles.formCard}>
-                {/* Nombre */}
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>
-                    Nombre completo
+                  <Text style={styles.toggleFormText}>
+                    {showDriverForm
+                      ? 'Ocultar formulario'
+                      : 'Registrar nuevo chofer'}
                   </Text>
+                </Pressable>
 
-                  <View style={styles.inputWrapper}>
-                    <Ionicons
-                      name="person-outline"
-                      size={20}
-                      color="#777"
-                    />
+                {/* Formulario */}
+                {showDriverForm && (
+                  <View style={styles.formCard}>
+                    {/* Nombre */}
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.inputLabel}>
+                        Nombre completo
+                      </Text>
 
-                    <TextInput
-                      value={driverName}
-                      onChangeText={setDriverName}
-                      placeholder="Ej. Juan Pérez"
-                      placeholderTextColor="#999"
-                      style={styles.input}
-                      autoCapitalize="words"
-                      editable={!creatingDriver}
-                    />
-                  </View>
-                </View>
+                      <View style={styles.inputWrapper}>
+                        <Ionicons
+                          name="person-outline"
+                          size={20}
+                          color="#777"
+                        />
 
-                {/* Email */}
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>
-                    Email
-                  </Text>
+                        <TextInput
+                          value={driverName}
+                          onChangeText={setDriverName}
+                          placeholder="Ej. Juan Pérez"
+                          placeholderTextColor="#999"
+                          style={styles.input}
+                          autoCapitalize="words"
+                          editable={!creatingDriver}
+                        />
+                      </View>
+                    </View>
 
-                  <View style={styles.inputWrapper}>
-                    <Ionicons
-                      name="mail-outline"
-                      size={20}
-                      color="#777"
-                    />
+                    {/* Email */}
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.inputLabel}>
+                        Email
+                      </Text>
 
-                    <TextInput
-                      value={driverEmail}
-                      onChangeText={setDriverEmail}
-                      placeholder="Ej. juan@email.com"
-                      placeholderTextColor="#999"
-                      style={styles.input}
-                      keyboardType="email-address"
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      editable={!creatingDriver}
-                    />
-                  </View>
-                </View>
+                      <View style={styles.inputWrapper}>
+                        <Ionicons
+                          name="mail-outline"
+                          size={20}
+                          color="#777"
+                        />
 
-                {/* Contraseña */}
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Contraseña</Text>
-                  <View style={styles.inputWrapper}>
-                    <Ionicons
-                      name="lock-closed-outline"
-                      size={20}
-                      color="#8995A3"
-                    />
-                    <TextInput
-                      style={styles.input}
-                      placeholder="Contraseña"
-                      placeholderTextColor="#A0A8B2"
-                      value={driverPassword}
-                      onChangeText={setDriverPassword}
-                      secureTextEntry={!showDriverPassword}
-                      autoCapitalize="none"
-                      textContentType="password"
-                    />
+                        <TextInput
+                          value={driverEmail}
+                          onChangeText={setDriverEmail}
+                          placeholder="Ej. juan@email.com"
+                          placeholderTextColor="#999"
+                          style={styles.input}
+                          keyboardType="email-address"
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                          editable={!creatingDriver}
+                        />
+                      </View>
+                    </View>
+
+                    {/* Contraseña */}
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.inputLabel}>
+                        Contraseña
+                      </Text>
+
+                      <View style={styles.inputWrapper}>
+                        <Ionicons
+                          name="lock-closed-outline"
+                          size={20}
+                          color="#8995A3"
+                        />
+
+                        <TextInput
+                          style={styles.input}
+                          placeholder="Contraseña"
+                          placeholderTextColor="#A0A8B2"
+                          value={driverPassword}
+                          onChangeText={setDriverPassword}
+                          secureTextEntry={!showDriverPassword}
+                          autoCapitalize="none"
+                          textContentType="password"
+                        />
+
+                        <Pressable
+                          onPress={() =>
+                            setShowDriverPassword(
+                              (prev) => !prev
+                            )
+                          }
+                          hitSlop={10}
+                        >
+                          <Ionicons
+                            name={
+                              showDriverPassword
+                                ? 'eye-off-outline'
+                                : 'eye-outline'
+                            }
+                            size={21}
+                            color="#8995A3"
+                          />
+                        </Pressable>
+                      </View>
+                    </View>
+
+                    {/* Botón crear */}
                     <Pressable
-                      onPress={() => setShowDriverPassword((prev) => !prev)}
-                      hitSlop={10}
-                      accessibilityRole="button"
-                      accessibilityLabel={
-                        showDriverPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'
-                      }
+                      style={[
+                        styles.createButton,
+                        creatingDriver &&
+                          styles.createButtonDisabled,
+                      ]}
+                      onPress={handleCreateDriver}
+                      disabled={creatingDriver}
                     >
-                      <Ionicons
-                        name={showDriverPassword ? 'eye-off-outline' : 'eye-outline'}
-                        size={21}
-                        color="#8995A3"
-                      />
+                      {creatingDriver ? (
+                        <ActivityIndicator
+                          size="small"
+                          color="#FFFFFF"
+                        />
+                      ) : (
+                        <>
+                          <Ionicons
+                            name="person-add-outline"
+                            size={20}
+                            color="#FFFFFF"
+                          />
+
+                          <Text style={styles.createButtonText}>
+                            Crear chofer
+                          </Text>
+                        </>
+                      )}
                     </Pressable>
                   </View>
-                </View>
-
-                {/* Botón */}
-                <Pressable
-                  style={[
-                    styles.createButton,
-                    creatingDriver &&
-                      styles.createButtonDisabled,
-                  ]}
-                  onPress={handleCreateDriver}
-                  disabled={creatingDriver}
-                >
-                  {creatingDriver ? (
-                    <ActivityIndicator
-                      size="small"
-                      color="#FFFFFF"
-                    />
-                  ) : (
-                    <>
-                      <Ionicons
-                        name="person-add-outline"
-                        size={20}
-                        color="#FFFFFF"
-                      />
-
-                      <Text style={styles.createButtonText}>
-                        Crear chofer
-                      </Text>
-                    </>
-                  )}
-                </Pressable>
+                )}
               </View>
-            </View>
+            </>
           )}
 
           {/* Cerrar sesión */}
@@ -727,6 +895,124 @@ const styles = StyleSheet.create({
 
   createButtonText: {
     color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+
+  driversCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+
+  loadingDrivers: {
+    minHeight: 100,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+  },
+
+  loadingDriversText: {
+    fontSize: 13,
+    color: '#6B7280',
+  },
+
+  emptyDrivers: {
+    padding: 24,
+    alignItems: 'center',
+  },
+
+  emptyDriversIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: '#F0F3F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+
+  emptyDriversTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#374151',
+  },
+
+  emptyDriversText: {
+    fontSize: 13,
+    color: '#7A8694',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+
+  driverRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+
+  driverRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#EDF0F3',
+  },
+
+  driverAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#EAF0F7',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+
+  driverAvatarText: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: PRIMARY,
+  },
+
+  driverInfo: {
+    flex: 1,
+  },
+
+  driverName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+
+  driverEmail: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginTop: 3,
+  },
+
+  driverRole: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#EAF0F7',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  toggleFormButton: {
+    minHeight: 50,
+    borderWidth: 1,
+    borderColor: '#C9D7E6',
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+
+  toggleFormText: {
+    color: PRIMARY,
     fontSize: 15,
     fontWeight: '700',
   },
