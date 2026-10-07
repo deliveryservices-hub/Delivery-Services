@@ -974,7 +974,7 @@ export default function DriverRouteDetailScreen() {
               styles.primaryButton,
               !isRouteToday(route.date) && styles.startButtonDisabled,
             ]}
-            onPress={() => handleStartRoute}
+            onPress={handleStartRoute}
             disabled={!isRouteToday(route.date)}
           >
             <Text style={[
